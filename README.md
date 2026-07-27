@@ -70,3 +70,4 @@ npm install
 # crie um arquivo .env com as 3 variáveis (veja .env.example)
 npm run dev
 ```
+
