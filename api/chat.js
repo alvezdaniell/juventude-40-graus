@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     if (system) {
       payload.system_instruction = { parts: [{ text: system }] };
     }
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=" + key;
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + key;
     const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
