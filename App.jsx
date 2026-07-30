@@ -32,7 +32,7 @@ const tint = (hex, aa) => hex + aa; // hex + alpha hex (ex "1F")
 const SYSTEM_CHAT = `Você é o "Sol", agente da Juventude 40 Graus (juventude do Ceará, ciclo 2026). Ajuda o jovem a transformar o que vive numa proposta concreta de política pública.
 Regras:
 - Português do Brasil, tom jovem, caloroso, nordestino. Frases curtas.
-- Logo no início pergunte o primeiro nome e a cidade, de forma leve. Depois use o nome e cite a cidade quando fizer sentido.
+- Comece descobrindo o que mais incomoda a pessoa na cidade dela. NÃO pergunte nome nem cidade — isso é preenchido no fim, ao enviar.
 - Uma pergunta por vez. Descubra: problema, quem é afetado, e o que fazer na prática.
 - Fique no tema (juventude/cidade/Ceará). Fora do escopo, recuse com leveza e traga de volta.
 - Não prometa nada em nome de candidato nem faça propaganda. A ideia é da pessoa.
@@ -93,12 +93,15 @@ function SunMark({ size = 30, color }) {
     </svg>
   );
 }
-function Icon({ name, size = 22, color }) {
-  const s = { width: size, height: size, fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
+function Icon({ name, size = 22, color, fill }) {
+  const s = { width: size, height: size, fill: fill || "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
   if (name === "chat") return <svg viewBox="0 0 24 24" {...s}><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z" /></svg>;
   if (name === "fire") return <svg viewBox="0 0 24 24" {...s}><path d="M12 3s5 4 5 9a5 5 0 0 1-10 0c0-2 1-3 1-3s0 2 2 2c1.5 0 1-3-1-5 2 0 3-2 3-5z" /></svg>;
   if (name === "lock") return <svg viewBox="0 0 24 24" {...s}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>;
   if (name === "pin") return <svg viewBox="0 0 24 24" {...s}><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>;
+  if (name === "menu") return <svg viewBox="0 0 24 24" {...s}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
+  if (name === "x") return <svg viewBox="0 0 24 24" {...s}><path d="M6 6l12 12M18 6L6 18" /></svg>;
+  if (name === "back") return <svg viewBox="0 0 24 24" {...s}><path d="M15 6l-6 6 6 6" /></svg>;
   return null;
 }
 
@@ -192,8 +195,10 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [toast, setToast] = useState("");
   const [consentiu, setConsentiu] = useState(() => { try { return localStorage.getItem("consentiu40") === "1"; } catch { return true; } });
+  const [menu, setMenu] = useState(false);
+  const [coordAberta, setCoordAberta] = useState(false);
 
-  const [msgs, setMsgs] = useState([{ role: "assistant", content: "Salve! Eu sou o Sol ☀️, agente da Juventude 40 Graus. Se você pudesse mudar UMA coisa pra galera jovem da sua cidade, o que seria?\n\n(Me diz teu nome e tua cidade também 😉)" }]);
+  const [msgs, setMsgs] = useState([{ role: "assistant", content: "Salve! Eu sou o Sol ☀️, agente da Juventude 40 Graus. Se você pudesse mudar UMA coisa pra galera jovem da sua cidade, o que seria?" }]);
   const [input, setInput] = useState("");
   const [pensando, setPensando] = useState(false);
   const [rascunho, setRascunho] = useState(null);
@@ -262,11 +267,14 @@ export default function App() {
         input::placeholder,textarea::placeholder{ color:${T.inkMute}; }
       `}</style>
 
-      <div style={{ width: "100%", maxWidth: 460, minHeight: "100vh", background: T.paper, display: "flex", flexDirection: "column", position: "relative", boxShadow: "0 0 40px rgba(0,0,0,.22)" }}>
+      <div style={{ width: "100%", maxWidth: 460, height: "100vh", overflow: "hidden", background: T.paper, display: "flex", flexDirection: "column", position: "relative", boxShadow: "0 0 40px rgba(0,0,0,.22)" }}>
         {/* Header */}
-        <header style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.paper, borderBottom: `1px solid ${T.line}`, position: "sticky", top: 0, zIndex: 20 }}>
+        <header style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.paper, borderBottom: `1px solid ${T.line}`, zIndex: 15 }}>
           <div className="disp" style={{ fontSize: 21, color: T.ink, lineHeight: 1 }}>Juventude <span style={{ color: T.orange }}>40°</span></div>
-          <div style={{ marginLeft: "auto" }}><SunMark size={28} /></div>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            <SunMark size={26} />
+            <button onClick={() => setMenu(true)} aria-label="Menu" style={{ width: 38, height: 38, borderRadius: 12, border: `1px solid ${T.line}`, background: T.paper2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="menu" size={22} color={T.ink} /></button>
+          </div>
         </header>
 
         {/* Conteúdo */}
@@ -277,24 +285,51 @@ export default function App() {
               onQuick={(tema) => enviarTexto(`Quero falar sobre ${tema.toLowerCase()} na minha cidade.`)} onProposta={iniciarEnvio} participantes={ideias.length} />
           )}
           {tab === "mural" && <MuralView ideias={ideias} carregando={carregando} onCurtir={curtirIdeia} onToast={showToast} />}
-          {tab === "entregar" && (session
-            ? <EntregarView onSair={() => supabase.auth.signOut()} onToast={showToast} />
-            : <LoginView onEntrar={async (email, senha) => { const { error } = await supabase.auth.signInWithPassword({ email, password: senha }); return !error; }} />)}
         </main>
 
-        {/* Bottom nav */}
-        <nav style={{ display: "flex", background: T.paper2, borderTop: `1px solid ${T.line}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {[["conversar", "Conversar", "chat"], ["mural", "Mural", "fire"], ["entregar", "Entregar", "lock"]].map(([k, label, ic]) => {
-            const on = tab === k;
-            return (
-              <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "9px 0 10px", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? T.orange : T.inkMute }}>
-                <Icon name={ic} size={22} color={on ? T.orange : T.inkMute} />
-                <span style={{ fontSize: 11.5, fontWeight: on ? 700 : 500 }}>{label}</span>
-                <span style={{ width: 5, height: 5, borderRadius: 999, background: on ? T.orange : "transparent" }} />
-              </button>
-            );
-          })}
-        </nav>
+        {/* Barra fixa (estilo pílula, laranja) */}
+        <div style={{ flexShrink: 0, background: T.paper, padding: "9px 14px calc(12px + env(safe-area-inset-bottom))", borderTop: `1px solid ${T.line}` }}>
+          <nav style={{ display: "flex", gap: 6, background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 999, padding: 6, boxShadow: T.shadowSoft }}>
+            {[["conversar", "Conversar", "chat"], ["mural", "Mural", "fire"]].map(([k, label, ic]) => {
+              const on = tab === k;
+              return (
+                <button key={k} onClick={() => setTab(k)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 0", borderRadius: 999, border: "none", cursor: "pointer", background: on ? T.orange : "transparent", color: on ? "#fff" : T.inkMute, transition: "background .15s" }}>
+                  <Icon name={ic} size={21} color={on ? "#fff" : T.inkMute} fill={on ? "#fff" : "none"} />
+                  <span style={{ fontSize: 14.5, fontWeight: on ? 800 : 600 }}>{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Menu lateral */}
+        {menu && <div onClick={() => setMenu(false)} style={{ position: "absolute", inset: 0, background: "rgba(42,26,16,.45)", zIndex: 30 }} />}
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: "76%", maxWidth: 300, background: T.paper, zIndex: 31, boxShadow: T.shadow, transform: menu ? "translateX(0)" : "translateX(-105%)", transition: "transform .25s ease", padding: 18, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="disp" style={{ fontSize: 20 }}>Menu</div>
+            <button onClick={() => setMenu(false)} aria-label="Fechar" style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer" }}><Icon name="x" size={18} color={T.ink} /></button>
+          </div>
+          <button onClick={() => { setMenu(false); setCoordAberta(true); }} style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer", textAlign: "left" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 999, background: T.gradCta, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name="lock" size={20} color="#fff" /></div>
+            <div><div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>Área da coordenação</div><div style={{ fontSize: 12, color: T.inkMute }}>Login · dossiê e moderação</div></div>
+          </button>
+          <div style={{ marginTop: "auto", fontSize: 11.5, color: T.inkMute, lineHeight: 1.5 }}>Só a coordenação usa esta parte. O público vê apenas Conversar e Mural.</div>
+        </div>
+
+        {/* Área da coordenação (sobreposta) */}
+        {coordAberta && (
+          <div style={{ position: "absolute", inset: 0, background: T.paper, zIndex: 40, display: "flex", flexDirection: "column" }}>
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${T.line}` }}>
+              <button onClick={() => setCoordAberta(false)} aria-label="Voltar" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="back" size={18} color={T.ink} /></button>
+              <div className="disp" style={{ fontSize: 17, color: T.ink }}>Voltar ao app</div>
+            </div>
+            <div className="scroll" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", minHeight: 0 }}>
+              {session
+                ? <EntregarView onSair={() => supabase.auth.signOut()} onToast={showToast} />
+                : <LoginView onEntrar={async (email, senha) => { const { error } = await supabase.auth.signInWithPassword({ email, password: senha }); return !error; }} />}
+            </div>
+          </div>
+        )}
       </div>
 
       {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
@@ -449,12 +484,12 @@ function EntregarView({ onSair, onToast }) {
   const [carregando, setCarregando] = useState(true);
   const carregar = async () => { const [d, p] = await Promise.all([listDossie(), listPendentes()]); setIdeias(d); setPendentes(p); setCarregando(false); };
   useEffect(() => { carregar(); }, []);
-  const aprovar = async (id) => { await aprovarIdeia(id); onToast && onToast("Aprovada \u2713"); carregar(); };
+  const aprovar = async (id) => { await aprovarIdeia(id); onToast && onToast("Aprovada ✓"); carregar(); };
   const recusar = async (id) => { await recusarIdeia(id); onToast && onToast("Recusada"); carregar(); };
   const porTema = TEMAS.map((t) => ({ tema: t, itens: ideias.filter((i) => i.tema === t) })).filter((g) => g.itens.length).sort((a, b) => b.itens.length - a.itens.length);
   const cidades = new Set(ideias.map((i) => (i.cidade || "").trim().toLowerCase()).filter(Boolean)).size;
   const maxTema = porTema.length ? porTema[0].itens.length : 1;
-  const copiar = async () => { try { await navigator.clipboard.writeText(montarRelatorio(ideias)); onToast && onToast("Relat\u00f3rio copiado \u2713"); } catch (e) {} };
+  const copiar = async () => { try { await navigator.clipboard.writeText(montarRelatorio(ideias)); onToast && onToast("Relatório copiado ✓"); } catch (e) {} };
 
   const baixarPDF = () => {
     const w = window.open("", "_blank"); if (!w) return;
@@ -462,17 +497,17 @@ function EntregarView({ onSair, onToast }) {
     const barras = porTema.map((g) => `<div class="brow"><div class="blab"><span>${g.tema}</span><b>${g.itens.length}</b></div><div class="btrack"><div class="bfill" style="width:${Math.round(g.itens.length / maxTema * 100)}%;background:${TEMA_COR[g.tema]}"></div></div></div>`).join("");
     const secoes = porTema.map((g) => {
       const cards = [...g.itens].sort((a, b) => (b.curtidas || 0) - (a.curtidas || 0)).map((i) => {
-        const autor = esc([i.nome, i.cidade, i.idade].filter(Boolean).join(" \u00b7 "));
+        const autor = esc([i.nome, i.cidade, i.idade].filter(Boolean).join(" · "));
         const lk = (i.curtidas || 0) >= 15 ? `<span class="hot">\ud83d\udd25 ${i.curtidas}</span>` : `<span class="lk">\ud83d\udd25 ${i.curtidas || 0}</span>`;
         return `<div class="card" style="border-left-color:${TEMA_COR[g.tema]}"><div class="ctop"><span class="ttag" style="color:${TEMA_COR[g.tema]}">${g.tema}</span>${lk}</div><div class="ctitle">${esc(i.titulo)}</div>${i.problema ? `<div class="cline"><b>Problema.</b> ${esc(i.problema)}</div>` : ""}${i.proposta ? `<div class="cline"><b>Proposta.</b> ${esc(i.proposta)}</div>` : ""}${autor ? `<div class="cauthor">${autor}</div>` : ""}</div>`;
       }).join("");
       return `<div class="sec"><div class="sechead"><span class="dot" style="background:${TEMA_COR[g.tema]}"></span><h2 style="color:${TEMA_COR[g.tema]}">${g.tema}</h2><span class="badge" style="background:${TEMA_COR[g.tema]}">${g.itens.length}</span></div>${cards}</div>`;
     }).join("");
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dossi\u00ea Juventude 40 Graus</title>
+    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dossiê Juventude 40 Graus</title>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>*{box-sizing:border-box}body{margin:0;font-family:'Archivo',Arial,sans-serif;color:#2A1A10;background:#FCF4E6}.disp{font-family:'Bricolage Grotesque','Archivo',sans-serif;font-weight:800;letter-spacing:-.01em}.page{page-break-after:always}.page:last-child{page-break-after:auto}.cover{height:297mm;background:linear-gradient(150deg,#F5A623,#EF5B25 52%,#C4341A);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}.cover .ray{position:absolute;top:-120px;right:-80px;width:420px;height:420px;background:radial-gradient(circle,rgba(255,255,255,.28),transparent 70%)}.cover img{width:70%;max-width:340px;border-radius:12px;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}.cover h1{font-size:42px;margin:24px 0 6px}.cover .sub{font-size:16px;opacity:.95}.cover .eb{font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;opacity:.9;margin-bottom:16px}.cover .foot{position:absolute;bottom:26px;font-size:12px;opacity:.9}.body{padding:24mm 18mm}.stats{display:flex;gap:12px;margin-bottom:22px}.stat{flex:1;background:#FFFBF2;border:1.5px solid #EADFC9;border-radius:14px;padding:13px;text-align:center}.stat b{font-size:26px;color:#EF5B25;display:block;font-family:'Bricolage Grotesque',sans-serif}.stat span{font-size:12px;color:#6E5A4C;font-weight:600}.eb2{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#6E5A4C;margin:6px 0 10px}.chart{margin-bottom:24px}.brow{margin-bottom:9px}.blab{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}.btrack{height:9px;background:#EADFC9;border-radius:999px;overflow:hidden}.bfill{height:100%;border-radius:999px}.sec{margin-bottom:18px;page-break-inside:avoid}.sechead{display:flex;align-items:center;gap:8px;margin:0 0 10px}.sechead h2{font-size:19px;margin:0;font-family:'Bricolage Grotesque',sans-serif}.dot{width:11px;height:11px;border-radius:999px}.badge{color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;font-family:'Bricolage Grotesque',sans-serif}.card{background:#FFFBF2;border:1px solid #EADFC9;border-left:5px solid;border-radius:12px;padding:12px 14px;margin-bottom:10px;page-break-inside:avoid}.ctop{display:flex;justify-content:space-between;align-items:center}.ttag{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hot{font-size:12px;font-weight:700;color:#C4341A;background:#F5A62322;border-radius:999px;padding:2px 9px}.lk{font-size:12px;font-weight:600;color:#A2907E}.ctitle{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;margin:4px 0 6px}.cline{font-size:13px;color:#6E5A4C;margin-bottom:3px}.cline b{color:#2A1A10}.cauthor{font-size:11px;color:#A2907E;font-weight:600;margin-top:6px}.foot2{border-top:1px solid #EADFC9;margin-top:20px;padding-top:12px;font-size:11px;color:#A2907E;display:flex;justify-content:space-between}@media print{.noprint{display:none}}</style></head><body>
-    <div class="page"><div class="cover"><div class="ray"></div><div class="eb">Pol\u00edticas P\u00fablicas de Juventude</div><img src="${LOGO_BANNER}"/><h1 class="disp">Dossi\u00ea da Juventude</h1><div class="sub">JSB Cear\u00e1 \u00b7 ciclo 2026</div><div class="foot">Gerado em ${dataHoje} \u00b7 juventude-40-graus.vercel.app</div></div></div>
-    <div class="page"><div class="body"><div class="stats"><div class="stat"><b>${ideias.length}</b><span>propostas</span></div><div class="stat"><b>${porTema.length}</b><span>temas</span></div><div class="stat"><b>${cidades}</b><span>cidades</span></div></div><div class="chart"><div class="eb2">Temas mais pedidos pela juventude</div>${barras}</div><div class="eb2">Propostas por tema</div>${secoes}<div class="foot2"><span>Juventude 40 Graus \u00b7 JSB Cear\u00e1</span><span>Gerado em ${dataHoje}</span></div><button class="noprint" onclick="window.print()" style="margin-top:18px;padding:12px 22px;background:#F5A623;border:none;border-radius:12px;font-weight:bold;cursor:pointer">Salvar como PDF / Imprimir</button></div></div>
+    <div class="page"><div class="cover"><div class="ray"></div><div class="eb">Políticas Públicas de Juventude</div><img src="${LOGO_BANNER}"/><h1 class="disp">Dossiê da Juventude</h1><div class="sub">JSB Ceará · ciclo 2026</div><div class="foot">Gerado em ${dataHoje} · juventude-40-graus.vercel.app</div></div></div>
+    <div class="page"><div class="body"><div class="stats"><div class="stat"><b>${ideias.length}</b><span>propostas</span></div><div class="stat"><b>${porTema.length}</b><span>temas</span></div><div class="stat"><b>${cidades}</b><span>cidades</span></div></div><div class="chart"><div class="eb2">Temas mais pedidos pela juventude</div>${barras}</div><div class="eb2">Propostas por tema</div>${secoes}<div class="foot2"><span>Juventude 40 Graus · JSB Ceará</span><span>Gerado em ${dataHoje}</span></div><button class="noprint" onclick="window.print()" style="margin-top:18px;padding:12px 22px;background:#F5A623;border:none;border-radius:12px;font-weight:bold;cursor:pointer">Salvar como PDF / Imprimir</button></div></div>
     </body></html>`);
     w.document.close();
   };
@@ -480,20 +515,20 @@ function EntregarView({ onSair, onToast }) {
   return (
     <div className="scroll rise" style={{ overflowY: "auto", flex: 1, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div className="disp" style={{ fontSize: 23, color: T.ink }}>Coordena\u00e7\u00e3o</div>
+        <div className="disp" style={{ fontSize: 23, color: T.ink }}>Coordenação</div>
         <button onClick={onSair} style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 999, border: `1.5px solid ${T.line}`, background: "transparent", color: T.inkSoft, cursor: "pointer" }}>Sair</button>
       </div>
 
       {pendentes.length > 0 && (
         <div style={{ marginTop: 14, background: tint(T.gold, "1A"), border: `1.5px solid ${tint(T.gold, "66")}`, borderRadius: 16, padding: 12 }}>
-          <div className="eyebrow" style={{ color: T.orangeDeep, marginBottom: 8 }}>Aguardando aprova\u00e7\u00e3o ({pendentes.length})</div>
+          <div className="eyebrow" style={{ color: T.orangeDeep, marginBottom: 8 }}>Aguardando aprovação ({pendentes.length})</div>
           {pendentes.map((i) => (
             <div key={i.id} style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 9 }}>
               <div className="eyebrow" style={{ color: TEMA_COR[i.tema] || T.orange }}>{i.tema}</div>
               <div className="disp" style={{ fontSize: 16, margin: "3px 0 5px", color: T.ink }}>{i.titulo || "Proposta"}</div>
               {i.problema && <p style={{ fontSize: 12.5, margin: "0 0 3px", color: T.inkSoft }}><b style={{ color: T.ink }}>Problema.</b> {i.problema}</p>}
               {i.proposta && <p style={{ fontSize: 12.5, margin: 0, color: T.inkSoft }}><b style={{ color: T.ink }}>Proposta.</b> {i.proposta}</p>}
-              <div style={{ fontSize: 11, color: T.inkMute, marginTop: 6 }}>{[i.nome, i.cidade, i.idade].filter(Boolean).join(" \u00b7 ") || "An\u00f4nimo"}</div>
+              <div style={{ fontSize: 11, color: T.inkMute, marginTop: 6 }}>{[i.nome, i.cidade, i.idade].filter(Boolean).join(" · ") || "Anônimo"}</div>
               <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
                 <button onClick={() => aprovar(i.id)} style={{ flex: 1, padding: 9, borderRadius: 10, border: "none", background: "#1E9E6A", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Aprovar</button>
                 <button onClick={() => recusar(i.id)} style={{ flex: 1, padding: 9, borderRadius: 10, border: `1.5px solid ${T.line}`, background: "transparent", color: T.red, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Recusar</button>
@@ -503,7 +538,7 @@ function EntregarView({ onSair, onToast }) {
         </div>
       )}
 
-      <div className="disp" style={{ fontSize: 18, color: T.ink, margin: "18px 0 2px" }}>Dossi\u00ea da juventude</div>
+      <div className="disp" style={{ fontSize: 18, color: T.ink, margin: "18px 0 2px" }}>Dossiê da juventude</div>
       <div style={{ display: "flex", gap: 8, margin: "10px 0 14px" }}>
         {[[ideias.length, "propostas"], [porTema.length, "temas"], [cidades, "cidades"]].map(([v, l], i) => (
           <div key={i} style={{ flex: 1, background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 6px", textAlign: "center" }}><div className="disp tnum" style={{ fontSize: 22, color: T.orange }}>{v}</div><div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>{l}</div></div>
@@ -513,7 +548,7 @@ function EntregarView({ onSair, onToast }) {
         <button onClick={copiar} disabled={!ideias.length} style={{ flex: 1, padding: 12, borderRadius: 14, border: `1.5px solid ${T.line}`, background: T.paper2, color: T.ink, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Copiar texto</button>
         <button onClick={baixarPDF} disabled={!ideias.length} className="disp" style={{ flex: 1, padding: 12, borderRadius: 14, border: "none", background: T.gradCta, color: T.ink, fontSize: 14, cursor: "pointer", boxShadow: T.shadowSoft }}>Baixar PDF</button>
       </div>
-      {carregando && <p style={{ color: T.inkMute }}>Carregando\u2026</p>}
+      {carregando && <p style={{ color: T.inkMute }}>Carregando…</p>}
       {!carregando && porTema.length === 0 && <p style={{ color: T.inkSoft }}>Nenhuma proposta aprovada ainda.</p>}
       {porTema.length > 0 && <div style={{ marginBottom: 18 }}>
         <div className="eyebrow" style={{ color: T.inkSoft, marginBottom: 8 }}>Temas mais pedidos</div>
@@ -524,7 +559,7 @@ function EntregarView({ onSair, onToast }) {
       </div>}
       {porTema.map((g) => <div key={g.tema} style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}><span className="disp" style={{ fontSize: 16, color: TEMA_COR[g.tema] }}>{g.tema}</span><span className="tnum" style={{ fontSize: 11, fontWeight: 700, background: TEMA_COR[g.tema], color: "#fff", borderRadius: 999, padding: "1px 9px" }}>{g.itens.length}</span></div>
-        {g.itens.map((i) => <div key={i.id} style={{ fontSize: 13.5, borderLeft: `3px solid ${T.line}`, paddingLeft: 10, marginBottom: 8, color: T.inkSoft }}><b style={{ color: T.ink }}>{i.titulo}</b>{i.proposta ? ` \u2014 ${i.proposta}` : ""}{(i.nome || i.cidade) && <span style={{ display: "block", fontSize: 11, color: T.inkMute, marginTop: 2 }}>{[i.nome, i.cidade, i.idade].filter(Boolean).join(" \u00b7 ")}</span>}</div>)}
+        {g.itens.map((i) => <div key={i.id} style={{ fontSize: 13.5, borderLeft: `3px solid ${T.line}`, paddingLeft: 10, marginBottom: 8, color: T.inkSoft }}><b style={{ color: T.ink }}>{i.titulo}</b>{i.proposta ? ` — ${i.proposta}` : ""}{(i.nome || i.cidade) && <span style={{ display: "block", fontSize: 11, color: T.inkMute, marginTop: 2 }}>{[i.nome, i.cidade, i.idade].filter(Boolean).join(" · ")}</span>}</div>)}
       </div>)}
     </div>
   );
