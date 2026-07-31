@@ -417,7 +417,7 @@ function ConversarView({ msgs, iniciou, pensando, extraindo, input, setInput, sc
               <div style={{ position: "absolute", top: -40, right: -30, width: 160, height: 160, background: "radial-gradient(circle,rgba(255,255,255,.28),transparent 70%)", pointerEvents: "none" }} />
               {participantes > 0 && <div className="eyebrow" style={{ display: "inline-block", background: "rgba(0,0,0,.18)", padding: "4px 10px", borderRadius: 999, marginBottom: 10 }}>🔥 já somos {participantes} {participantes === 1 ? "jovem" : "jovens"}</div>}
               <div className="disp" style={{ fontSize: 30, lineHeight: 1.05 }}>Sua ideia<br />aquece a política</div>
-              <p style={{ fontSize: 13.5, marginTop: 8, marginBottom: 0, opacity: 0.95, lineHeight: 1.5 }}>Fale com o Sol. Ele transforma o que você sente, em uma proposta, que chega direto nos candidatos.</p>
+              <p style={{ fontSize: 13.5, marginTop: 8, marginBottom: 0, opacity: 0.95, lineHeight: 1.5 }}>Fale com o Sol. Sua ideia vira proposta e chega direto aos candidatos.</p>
             </div>
             <div className="eyebrow" style={{ color: T.inkSoft, margin: "18px 0 8px" }}>Começa por um tema</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
