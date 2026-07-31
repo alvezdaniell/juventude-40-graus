@@ -187,6 +187,16 @@ function Toast({ msg }) {
   return <div className="toast" style={{ position: "fixed", left: "50%", bottom: 84, transform: "translateX(-50%)", background: T.ink, color: "#fff", padding: "10px 18px", borderRadius: 999, fontSize: 13.5, fontWeight: 600, zIndex: 60, boxShadow: T.shadow }}>{msg}</div>;
 }
 
+function useWin() {
+  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
+}
+
 // ============================ APP ============================
 export default function App() {
   const [tab, setTab] = useState("conversar");
@@ -197,6 +207,11 @@ export default function App() {
   const [consentiu, setConsentiu] = useState(() => { try { return localStorage.getItem("consentiu40") === "1"; } catch { return true; } });
   const [menu, setMenu] = useState(false);
   const [coordAberta, setCoordAberta] = useState(false);
+  const w = useWin();
+  const isDesktop = w >= 1120;
+  const [sideOpen, setSideOpen] = useState(true);
+  const shellMax = w >= 600 ? 940 : 500;
+  const muralCols = isDesktop ? (sideOpen ? 3 : 4) : (w >= 900 ? 3 : w >= 600 ? 2 : 1);
 
   const [msgs, setMsgs] = useState([{ role: "assistant", content: "Salve! Eu sou o Sol ☀️, agente da Juventude 40 Graus. Se você pudesse mudar UMA coisa pra galera jovem da sua cidade, o que seria?" }]);
   const [input, setInput] = useState("");
@@ -250,6 +265,55 @@ export default function App() {
 
   if (!consentiu) return <ConsentGate onAceitar={() => { try { localStorage.setItem("consentiu40", "1"); } catch (e) {} setConsentiu(true); }} />;
 
+  if (isDesktop) return (
+    <div style={{ height: "100vh", overflow: "hidden", background: T.paper, display: "flex", fontFamily: "'Archivo',system-ui,sans-serif", color: T.ink }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap');
+        *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        .disp{ font-family:'Bricolage Grotesque','Archivo',system-ui,sans-serif; font-weight:800; letter-spacing:-.01em; }
+        .tnum{ font-feature-settings:"tnum"; font-variant-numeric:tabular-nums; }
+        .eyebrow{ font-size:11px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+        button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{ outline:2px solid ${T.orange}; outline-offset:2px; }
+        .scroll::-webkit-scrollbar{ width:7px; } .scroll::-webkit-scrollbar-thumb{ background:${T.line}; border-radius:8px; }
+        @keyframes rise{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} } .rise{ animation:rise .3s ease both; }
+        @keyframes toastin{ from{opacity:0;transform:translate(-50%,10px)} to{opacity:1;transform:translate(-50%,0)} } .toast{ animation:toastin .2s ease; }
+        @keyframes pop{ 0%{transform:scale(.7);opacity:.4} 60%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} } .pop{ animation:pop .5s ease; }
+        @media (prefers-reduced-motion: reduce){ .rise,.toast,.pop{ animation:none !important; } }
+        input::placeholder,textarea::placeholder{ color:${T.inkMute}; }
+      `}</style>
+      <aside style={{ width: sideOpen ? 250 : 0, flexShrink: 0, background: T.paper2, borderRight: sideOpen ? `1px solid ${T.line}` : "none", overflow: "hidden", transition: "width .28s ease" }}>
+        <div style={{ width: 250, height: "100%", padding: 20, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 24 }}><SunMark size={28} /><div className="disp" style={{ fontSize: 20 }}>Juventude <span style={{ color: T.orange }}>40°</span></div></div>
+          {[["conversar", "Conversar", "chat"], ["mural", "Mural", "fire"]].map(([k, label, ic]) => { const on = tab === k && !coordAberta; return (
+            <button key={k} onClick={() => { setCoordAberta(false); setTab(k); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginBottom: 6, borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", background: on ? T.orange : "transparent", color: on ? "#fff" : T.inkSoft, fontSize: 15.5, fontWeight: on ? 800 : 600 }}>
+              <Icon name={ic} size={21} color={on ? "#fff" : T.inkSoft} fill={on ? "#fff" : "none"} />{label}
+            </button>
+          ); })}
+          <button onClick={() => setCoordAberta(true)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginTop: 6, borderRadius: 12, border: coordAberta ? "none" : `1px solid ${T.line}`, background: coordAberta ? T.orange : "transparent", color: coordAberta ? "#fff" : T.inkSoft, fontSize: 15.5, fontWeight: coordAberta ? 800 : 600, cursor: "pointer", textAlign: "left" }}>
+            <Icon name="lock" size={20} color={coordAberta ? "#fff" : T.inkSoft} />Coordenação
+          </button>
+          <div style={{ marginTop: "auto", fontSize: 12, color: T.inkMute, lineHeight: 1.5 }}>A juventude do Ceará aquecendo a política 🔥</div>
+        </div>
+      </aside>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <header style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "12px 22px", borderBottom: `1px solid ${T.line}`, background: T.paper }}>
+          <button onClick={() => setSideOpen(!sideOpen)} aria-label="Menu" style={{ width: 40, height: 40, borderRadius: 11, border: `1px solid ${T.line}`, background: T.paper2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name={sideOpen ? "x" : "menu"} size={20} color={T.ink} /></button>
+          <div className="disp" style={{ fontSize: 20 }}>{coordAberta ? "Coordenação" : tab === "mural" ? "Mural da juventude" : "Conversar com o Sol"}</div>
+        </header>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {coordAberta
+            ? (session ? <EntregarView onSair={() => supabase.auth.signOut()} onToast={showToast} /> : <LoginView onEntrar={async (email, senha) => { const { error } = await supabase.auth.signInWithPassword({ email, password: senha }); return !error; }} />)
+            : tab === "conversar"
+              ? <div style={{ flex: 1, display: "flex", justifyContent: "center", minHeight: 0 }}><div style={{ flex: 1, maxWidth: 720, display: "flex", flexDirection: "column", minHeight: 0 }}><ConversarView msgs={msgs} iniciou={iniciou} pensando={pensando} extraindo={extraindo} input={input} setInput={setInput} scrollRef={scrollRef} onEnviar={() => enviarTexto(input)} onSend={enviarTexto} onQuick={(tema) => enviarTexto(`Quero falar sobre ${tema.toLowerCase()} na minha cidade.`)} onProposta={iniciarEnvio} participantes={ideias.length} /></div></div>
+              : <MuralView ideias={ideias} carregando={carregando} onCurtir={curtirIdeia} onToast={showToast} cols={muralCols} />}
+        </div>
+      </div>
+      {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
+      {sucesso && <SucessoModal onFechar={() => { setSucesso(null); setCoordAberta(false); setTab("mural"); }} />}
+      <Toast msg={toast} />
+    </div>
+  );
+
   return (
     <div style={{ minHeight: "100vh", background: T.orangeDeep, display: "flex", justifyContent: "center", fontFamily: "'Archivo',system-ui,sans-serif", color: T.ink }}>
       <style>{`
@@ -267,7 +331,7 @@ export default function App() {
         input::placeholder,textarea::placeholder{ color:${T.inkMute}; }
       `}</style>
 
-      <div style={{ width: "100%", maxWidth: 460, height: "100vh", overflow: "hidden", background: T.paper, display: "flex", flexDirection: "column", position: "relative", boxShadow: "0 0 40px rgba(0,0,0,.22)" }}>
+      <div style={{ width: "100%", maxWidth: shellMax, height: "100vh", overflow: "hidden", background: T.paper, display: "flex", flexDirection: "column", position: "relative", boxShadow: "0 0 40px rgba(0,0,0,.22)" }}>
         {/* Header */}
         <header style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: T.paper, borderBottom: `1px solid ${T.line}`, zIndex: 15 }}>
           <div className="disp" style={{ fontSize: 21, color: T.ink, lineHeight: 1 }}>Juventude <span style={{ color: T.orange }}>40°</span></div>
@@ -284,7 +348,7 @@ export default function App() {
               scrollRef={scrollRef} onEnviar={() => enviarTexto(input)} onSend={enviarTexto}
               onQuick={(tema) => enviarTexto(`Quero falar sobre ${tema.toLowerCase()} na minha cidade.`)} onProposta={iniciarEnvio} participantes={ideias.length} />
           )}
-          {tab === "mural" && <MuralView ideias={ideias} carregando={carregando} onCurtir={curtirIdeia} onToast={showToast} />}
+          {tab === "mural" && <MuralView ideias={ideias} carregando={carregando} onCurtir={curtirIdeia} onToast={showToast} cols={muralCols} />}
         </main>
 
         {/* Barra fixa (estilo pílula, laranja) */}
@@ -393,13 +457,13 @@ function ConversarView({ msgs, iniciou, pensando, extraindo, input, setInput, sc
 }
 
 // ============================ MURAL ============================
-function MuralView({ ideias, carregando, onCurtir, onToast }) {
+function MuralView({ ideias, carregando, onCurtir, onToast, cols }) {
   const [filtro, setFiltro] = useState(null);
   const [cidadeF, setCidadeF] = useState("");
   const [ranEver, setRanEver] = useState(false);
   useEffect(() => { setRanEver(true); }, []);
   const n = ideias.length;
-  const temp = 34 + n * 0.06;
+  const temp = 34 + n * 0.3;
   const cidadesUnicas = Array.from(new Set(ideias.map((i) => (i.cidade || "").trim()).filter(Boolean))).sort();
   const temasComIdeias = TEMAS.filter((t) => ideias.some((i) => i.tema === t));
   let lista = filtro ? ideias.filter((i) => i.tema === filtro) : ideias;
@@ -432,7 +496,9 @@ function MuralView({ ideias, carregando, onCurtir, onToast }) {
         {!carregando && lista.length === 0 && <div style={{ textAlign: "center", marginTop: 44, color: T.inkSoft }}>
           <SunMark size={46} /><p className="disp" style={{ fontSize: 18, marginTop: 10, marginBottom: 2 }}>Seja a primeira brasa</p><p style={{ fontSize: 13 }}>Vai em Conversar e solta a primeira ideia da sua cidade.</p>
         </div>}
-        {lista.map((idea) => <IdeiaCard key={idea.id} idea={idea} onCurtir={onCurtir} onToast={onToast} />)}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols || 1}, 1fr)`, gap: 12, alignItems: "start" }}>
+          {lista.map((idea) => <IdeiaCard key={idea.id} idea={idea} onCurtir={onCurtir} onToast={onToast} />)}
+        </div>
       </div>
     </div>
   );
