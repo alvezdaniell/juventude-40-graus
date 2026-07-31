@@ -463,7 +463,7 @@ function MuralView({ ideias, carregando, onCurtir, onToast, cols }) {
   const [ranEver, setRanEver] = useState(false);
   useEffect(() => { setRanEver(true); }, []);
   const n = ideias.length;
-  const temp = 34 + n * 0.3;
+  const temp = 34 + n * 0.06;
   const cidadesUnicas = Array.from(new Set(ideias.map((i) => (i.cidade || "").trim()).filter(Boolean))).sort();
   const temasComIdeias = TEMAS.filter((t) => ideias.some((i) => i.tema === t));
   let lista = filtro ? ideias.filter((i) => i.tema === filtro) : ideias;
