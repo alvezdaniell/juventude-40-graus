@@ -73,9 +73,10 @@ async function listPendentes() {
 async function aprovarIdeia(id) { await supabase.from("ideias").update({ aprovada: true, status: "aprovada" }).eq("id", id); }
 async function recusarIdeia(id) { await supabase.from("ideias").update({ aprovada: false, status: "recusada" }).eq("id", id); }
 async function saveIdeia(idea) {
-  const { data, error } = await supabase.from("ideias").insert(idea).select("id").single();
+  const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : ("id-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+  const { error } = await supabase.from("ideias").insert({ ...idea, id });
   if (error) throw error;
-  return data;
+  return { id };
 }
 
 // ---- Notificações locais (por aparelho, anônimas) ----
@@ -299,7 +300,9 @@ export default function App() {
     setRascunho(draft); setExtraindo(false);
   }
   async function confirmarEnvio() {
-    const novo = await saveIdeia(rascunho);
+    let novo;
+    try { novo = await saveIdeia(rascunho); }
+    catch (e) { showToast("Não consegui enviar agora, tenta de novo 🙏"); return; }
     if (novo && novo.id) {
       const mine = _ls.get("minhas40", []);
       mine.unshift({ id: novo.id, titulo: rascunho.titulo || "sua ideia" });
