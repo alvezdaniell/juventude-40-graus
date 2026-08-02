@@ -66,16 +66,27 @@ async function listDossie() {
   return data || [];
 }
 async function listPendentes() {
-  const { data, error } = await supabase.from("ideias").select("*").eq("aprovada", false).order("criado_em", { ascending: false });
+  const { data, error } = await supabase.from("ideias").select("*").eq("status", "pendente").order("criado_em", { ascending: false });
   if (error) return [];
   return data || [];
 }
-async function aprovarIdeia(id) { await supabase.from("ideias").update({ aprovada: true }).eq("id", id); }
-async function recusarIdeia(id) { await supabase.from("ideias").delete().eq("id", id); }
+async function aprovarIdeia(id) { await supabase.from("ideias").update({ aprovada: true, status: "aprovada" }).eq("id", id); }
+async function recusarIdeia(id) { await supabase.from("ideias").update({ aprovada: false, status: "recusada" }).eq("id", id); }
 async function saveIdeia(idea) {
-  const { error } = await supabase.from("ideias").insert(idea);
+  const { data, error } = await supabase.from("ideias").insert(idea).select("id").single();
   if (error) throw error;
-  return true;
+  return data;
+}
+
+// ---- Notificações locais (por aparelho, anônimas) ----
+const _ls = {
+  get: (k, f) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? f : v; } catch (e) { return f; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+async function statusMinhas() {
+  const mine = _ls.get("minhas40", []);
+  if (!mine.length) return [];
+  try { const { data } = await supabase.rpc("status_ideias", { ids: mine.map((m) => m.id) }); return data || []; } catch (e) { return []; }
 }
 async function curtirIdeia(id) {
   try { await supabase.rpc("curtir", { ideia_id: id }); } catch (e) {}
@@ -104,6 +115,7 @@ function Icon({ name, size = 22, color, fill }) {
   if (name === "menu") return <svg viewBox="0 0 24 24" {...s}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
   if (name === "x") return <svg viewBox="0 0 24 24" {...s}><path d="M6 6l12 12M18 6L6 18" /></svg>;
   if (name === "back") return <svg viewBox="0 0 24 24" {...s}><path d="M15 6l-6 6 6 6" /></svg>;
+  if (name === "bell") return <svg viewBox="0 0 24 24" {...s}><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.6 21a2 2 0 0 1-3.2 0" /></svg>;
   return null;
 }
 
@@ -199,6 +211,31 @@ function useWin() {
   return w;
 }
 
+function Bell({ n, onClick }) {
+  return (
+    <button onClick={onClick} aria-label="Novidades" style={{ position: "relative", width: 38, height: 38, borderRadius: 12, border: `1px solid ${T.line}`, background: T.paper2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+      <Icon name="bell" size={20} color={T.ink} />
+      {n > 0 && <span style={{ position: "absolute", top: -5, right: -5, minWidth: 18, height: 18, padding: "0 4px", borderRadius: 999, background: T.red, color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{n > 9 ? "9+" : n}</span>}
+    </button>
+  );
+}
+function NotifPanel({ notifs, onFechar }) {
+  return (
+    <div onClick={onFechar} style={{ position: "fixed", inset: 0, background: "rgba(42,26,16,.4)", zIndex: 60, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "64px 14px 14px" }}>
+      <div onClick={(e) => e.stopPropagation()} className="scroll" style={{ width: "100%", maxWidth: 420, maxHeight: "80vh", overflowY: "auto", background: T.paper, borderRadius: 18, boxShadow: T.shadow, padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div className="disp" style={{ fontSize: 19 }}>🔔 Novidades</div>
+          <button onClick={onFechar} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer" }}><Icon name="x" size={16} color={T.ink} /></button>
+        </div>
+        {notifs.length === 0 && <p style={{ color: T.inkMute, fontSize: 14, textAlign: "center", padding: "24px 0", lineHeight: 1.6 }}>Nenhuma novidade ainda.<br />Envie uma ideia e acompanhe aqui: enviada, aprovada e curtidas 🔥</p>}
+        {notifs.map((no, i) => (
+          <div key={no.key + i} style={{ background: no.lido ? T.paper2 : tint(T.gold, "22"), border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8, fontSize: 13.5, color: T.ink, lineHeight: 1.4 }}>{no.texto}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================ APP ============================
 export default function App() {
   const [tab, setTab] = useState("conversar");
@@ -208,6 +245,8 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [consentiu, setConsentiu] = useState(() => { try { return localStorage.getItem("consentiu40") === "1"; } catch { return true; } });
   const [menu, setMenu] = useState(false);
+  const [notifs, setNotifs] = useState(() => _ls.get("notifs40", []));
+  const [notifAberto, setNotifAberto] = useState(false);
   const [coordAberta, setCoordAberta] = useState(false);
   const w = useWin();
   const isDesktop = w >= 1120;
@@ -226,7 +265,7 @@ export default function App() {
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(""), 1700); };
 
   useEffect(() => {
-    (async () => { setIdeias(await listMural()); setCarregando(false); })();
+    (async () => { setIdeias(await listMural()); setCarregando(false); checkNotifs(); })();
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
@@ -260,10 +299,43 @@ export default function App() {
     setRascunho(draft); setExtraindo(false);
   }
   async function confirmarEnvio() {
-    await saveIdeia(rascunho);
+    const novo = await saveIdeia(rascunho);
+    if (novo && novo.id) {
+      const mine = _ls.get("minhas40", []);
+      mine.unshift({ id: novo.id, titulo: rascunho.titulo || "sua ideia" });
+      _ls.set("minhas40", mine.slice(0, 60));
+      const seen = _ls.get("seen40", {}); seen[novo.id] = { status: "pendente", curtidas: 0 }; _ls.set("seen40", seen);
+      const list = _ls.get("notifs40", []);
+      list.unshift({ key: novo.id + "-env", texto: `📨 Ideia "${rascunho.titulo || "sua ideia"}" enviada! Aguardando aprovação.`, ts: Date.now(), lido: false });
+      _ls.set("notifs40", list.slice(0, 40)); setNotifs(list.slice(0, 40));
+    }
     setRascunho(null);
     setSucesso(true);
   }
+  async function checkNotifs() {
+    const mine = _ls.get("minhas40", []); if (!mine.length) return;
+    const rows = await statusMinhas(); if (!rows.length) return;
+    const seen = _ls.get("seen40", {}); let list = _ls.get("notifs40", []);
+    const tituloDe = (id) => (mine.find((m) => m.id === id) || {}).titulo || "sua ideia";
+    rows.forEach((r) => {
+      const prev = seen[r.id];
+      if (prev) {
+        if (r.status !== prev.status) {
+          if (r.status === "aprovada") list.unshift({ key: r.id + "-ap", texto: `✅ Sua ideia "${tituloDe(r.id)}" foi aprovada e entrou no mural!`, ts: Date.now(), lido: false });
+          if (r.status === "recusada") list.unshift({ key: r.id + "-re", texto: `Sua ideia "${tituloDe(r.id)}" não entrou dessa vez. Tenta de novo com mais detalhes 💪`, ts: Date.now(), lido: false });
+        }
+        if ((r.curtidas || 0) > (prev.curtidas || 0)) {
+          const dif = r.curtidas - prev.curtidas;
+          list.unshift({ key: r.id + "-cur-" + r.curtidas, texto: `🔥 "${tituloDe(r.id)}" recebeu +${dif} ${dif === 1 ? "curtida" : "curtidas"} (total ${r.curtidas}).`, ts: Date.now(), lido: false });
+        }
+      }
+      seen[r.id] = { status: r.status, curtidas: r.curtidas || 0 };
+    });
+    list = list.slice(0, 40);
+    _ls.set("seen40", seen); _ls.set("notifs40", list); setNotifs(list);
+  }
+  const naoLidas = notifs.filter((n) => !n.lido).length;
+  const abrirNotifs = () => { setNotifAberto(true); const list = notifs.map((n) => ({ ...n, lido: true })); _ls.set("notifs40", list); setNotifs(list); };
 
   if (!consentiu) return <ConsentGate onAceitar={() => { try { localStorage.setItem("consentiu40", "1"); } catch (e) {} setConsentiu(true); }} />;
 
@@ -301,6 +373,7 @@ export default function App() {
         <header style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 12, padding: "12px 22px", borderBottom: `1px solid ${T.line}`, background: T.paper }}>
           <button onClick={() => setSideOpen(!sideOpen)} aria-label="Menu" style={{ width: 40, height: 40, borderRadius: 11, border: `1px solid ${T.line}`, background: T.paper2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name={sideOpen ? "x" : "menu"} size={20} color={T.ink} /></button>
           <div className="disp" style={{ fontSize: 20 }}>{coordAberta ? "Coordenação" : tab === "mural" ? "Mural da juventude" : "Conversar com o Sol"}</div>
+          <div style={{ marginLeft: "auto" }}><Bell n={naoLidas} onClick={abrirNotifs} /></div>
         </header>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {coordAberta
@@ -312,6 +385,7 @@ export default function App() {
       </div>
       {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
       {sucesso && <SucessoModal onFechar={() => { setSucesso(null); setCoordAberta(false); setTab("mural"); }} />}
+      {notifAberto && <NotifPanel notifs={notifs} onFechar={() => setNotifAberto(false)} />}
       <Toast msg={toast} />
     </div>
   );
@@ -339,6 +413,7 @@ export default function App() {
           <div className="disp" style={{ fontSize: 21, color: T.ink, lineHeight: 1 }}>Juventude <span style={{ color: T.orange }}>40°</span></div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
             <SunMark size={26} />
+            <Bell n={naoLidas} onClick={abrirNotifs} />
             <button onClick={() => setMenu(true)} aria-label="Menu" style={{ width: 38, height: 38, borderRadius: 12, border: `1px solid ${T.line}`, background: T.paper2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="menu" size={22} color={T.ink} /></button>
           </div>
         </header>
@@ -400,6 +475,7 @@ export default function App() {
 
       {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
       {sucesso && <SucessoModal onFechar={() => { setSucesso(null); setTab("mural"); }} />}
+      {notifAberto && <NotifPanel notifs={notifs} onFechar={() => setNotifAberto(false)} />}
       <Toast msg={toast} />
     </div>
   );
