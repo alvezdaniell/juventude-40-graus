@@ -466,10 +466,10 @@ function MuralView({ ideias, carregando, onCurtir, onToast, cols }) {
   useEffect(() => { setRanEver(true); }, []);
   const n = ideias.length;
   const temp = 34 + n * 0.3;
-  const cidadesUnicas = Array.from(new Set(ideias.map((i) => (i.cidade || "").trim()).filter(Boolean))).sort();
+  const cidadesUnicas = Array.from(new Set(ideias.map((i) => normCidade(i.cidade)).filter(Boolean))).sort();
   const temasComIdeias = TEMAS.filter((t) => ideias.some((i) => i.tema === t));
   let lista = filtro ? ideias.filter((i) => i.tema === filtro) : ideias;
-  if (cidadeF) lista = lista.filter((i) => (i.cidade || "").trim() === cidadeF);
+  if (cidadeF) lista = lista.filter((i) => normCidade(i.cidade) === cidadeF);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -519,7 +519,7 @@ function IdeiaCard({ idea, onCurtir, onToast }) {
       <div className="disp" style={{ fontSize: 17, color: T.ink, lineHeight: 1.15, margin: "5px 0 7px" }}>{idea.titulo || "Proposta"}</div>
       {idea.problema && <p style={{ fontSize: 13.5, margin: "0 0 4px", color: T.inkSoft }}><b style={{ color: T.ink }}>Problema.</b> {idea.problema}</p>}
       {idea.proposta && <p style={{ fontSize: 13.5, margin: 0, color: T.inkSoft }}><b style={{ color: T.ink }}>Proposta.</b> {idea.proposta}</p>}
-      {idea.cidade && <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 9, fontSize: 12, color: T.inkMute, fontWeight: 600 }}><Icon name="pin" size={13} color={T.inkMute} />{idea.cidade}</div>}
+      {idea.cidade && <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 9, fontSize: 12, color: T.inkMute, fontWeight: 600 }}><Icon name="pin" size={13} color={T.inkMute} />{normCidade(idea.cidade)}</div>}
     </div>
   );
 }
@@ -545,21 +545,70 @@ function LoginView({ onEntrar }) {
   );
 }
 
-// ---- Mapa do Ceará (municípios acendem por participação) ----
-function MapaCeara({ contagem }) {
+// ---- Padronização de cidades (une duplicados: "Sobral-CE" -> "Sobral") ----
+const _normKey = (v) => { let k = (v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, ""); if (k.length > 4 && k.endsWith("ce")) k = k.slice(0, -2); return k; };
+const _MUNI_MAP = {}; MUNICIPIOS.forEach((m) => { _MUNI_MAP[_normKey(m)] = m; });
+function normCidade(v) { if (!v) return ""; const k = _normKey(v); return _MUNI_MAP[k] || String(v).trim(); }
+function corMapa(n, max) { return n <= 0 ? "#F3E6CE" : n < max * 0.25 ? "#F7C24B" : n < max * 0.5 ? "#EF7B23" : n < max * 0.8 ? "#EF5B25" : "#C42D1B"; }
+
+// ---- Mapa do Ceará (zoom, arraste e clique pra filtrar) ----
+function MapaCeara({ contagem, onSelect, selecionada }) {
   const [sel, setSel] = useState(null);
+  const [vb, setVb] = useState({ x: 0, y: 0, w: CE_MAP.w, h: CE_MAP.h });
+  const svgRef = useRef(null);
+  const ptrs = useRef(new Map());
+  const last = useRef(null);
+  const moved = useRef(false);
   const vals = Object.values(contagem);
   const max = Math.max(1, ...(vals.length ? vals : [1]));
-  const cor = (n) => n <= 0 ? "#F3E6CE" : n < max * 0.25 ? "#F7C24B" : n < max * 0.5 ? "#EF7B23" : n < max * 0.8 ? "#EF5B25" : "#C42D1B";
+  const AR = CE_MAP.h / CE_MAP.w;
+  const clampV = (v) => {
+    let w = Math.min(CE_MAP.w, Math.max(CE_MAP.w * 0.22, v.w)); let h = w * AR;
+    let x = Math.max(-0.1 * CE_MAP.w, Math.min(CE_MAP.w * 1.1 - w, v.x));
+    let y = Math.max(-0.1 * CE_MAP.h, Math.min(CE_MAP.h * 1.1 - h, v.y));
+    return { x, y, w, h };
+  };
+  const zoomBy = (f, cx, cy) => {
+    const r = svgRef.current.getBoundingClientRect();
+    const px = cx == null ? vb.x + vb.w / 2 : vb.x + (cx - r.left) / r.width * vb.w;
+    const py = cy == null ? vb.y + vb.h / 2 : vb.y + (cy - r.top) / r.height * vb.h;
+    setVb((pp) => { let w = pp.w / f; w = Math.min(CE_MAP.w, Math.max(CE_MAP.w * 0.22, w)); const h = w * AR; const x = px - (px - pp.x) * (w / pp.w); const y = py - (py - pp.y) * (h / pp.h); return clampV({ x, y, w, h }); });
+  };
+  const onWheel = (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); };
+  const onDown = (e) => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) {} ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved.current = false; if (ptrs.current.size === 1) last.current = { x: e.clientX, y: e.clientY }; else if (ptrs.current.size === 2) { const [a, b] = [...ptrs.current.values()]; last.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) }; } };
+  const onMove = (e) => {
+    if (!ptrs.current.has(e.pointerId)) return;
+    ptrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const r = svgRef.current.getBoundingClientRect();
+    if (ptrs.current.size >= 2) {
+      const [a, b] = [...ptrs.current.values()]; const dist = Math.hypot(a.x - b.x, a.y - b.y); const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      if (last.current && last.current.dist) zoomBy(dist / last.current.dist, mx, my);
+      last.current = { dist }; moved.current = true;
+    } else if (last.current) {
+      if (Math.abs(e.clientX - last.current.x) + Math.abs(e.clientY - last.current.y) > 3) moved.current = true;
+      const dx = (e.clientX - last.current.x) / r.width * vb.w; const dy = (e.clientY - last.current.y) / r.height * vb.h;
+      setVb((pp) => clampV({ x: pp.x - dx, y: pp.y - dy, w: pp.w, h: pp.h }));
+      last.current = { x: e.clientX, y: e.clientY };
+    }
+  };
+  const onUp = (e) => { ptrs.current.delete(e.pointerId); if (ptrs.current.size === 1) { const v = [...ptrs.current.values()][0]; last.current = { x: v.x, y: v.y }; } else if (ptrs.current.size === 0) last.current = null; };
+  const clicar = (nome) => { if (moved.current) return; setSel(nome); onSelect && onSelect(nome); };
+  const btn = { width: 34, height: 34, borderRadius: 9, border: `1px solid ${T.line}`, background: T.paper, color: T.ink, fontSize: 18, fontWeight: 800, cursor: "pointer", lineHeight: 1, boxShadow: T.shadowSoft };
   return (
-    <div style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 16, padding: 12 }}>
-      <svg viewBox={`0 0 ${CE_MAP.w} ${CE_MAP.h}`} style={{ width: "100%", maxWidth: 440, display: "block", margin: "0 auto" }}>
-        {CE_MAP.m.map((mm, i) => { const n = contagem[mm.n] || 0; const on = sel === mm.n; return (
-          <path key={i} d={mm.d} fill={cor(n)} stroke={on ? T.ink : "#FCF4E6"} strokeWidth={on ? 1.4 : 0.5} style={{ cursor: "pointer" }} onClick={() => setSel(mm.n)} />
+    <div style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 16, padding: 12, position: "relative" }}>
+      <div style={{ position: "absolute", top: 16, right: 16, display: "flex", flexDirection: "column", gap: 6, zIndex: 2 }}>
+        <button style={btn} onClick={() => zoomBy(1.3)}>+</button>
+        <button style={btn} onClick={() => zoomBy(1 / 1.3)}>−</button>
+        <button style={{ ...btn, fontSize: 15 }} onClick={() => setVb({ x: 0, y: 0, w: CE_MAP.w, h: CE_MAP.h })}>⟲</button>
+      </div>
+      <svg ref={svgRef} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+        style={{ width: "100%", maxWidth: 460, display: "block", margin: "0 auto", touchAction: "none", cursor: "grab", userSelect: "none" }}>
+        {CE_MAP.m.map((mm, i) => { const n = contagem[mm.n] || 0; const on = sel === mm.n || selecionada === mm.n; return (
+          <path key={i} d={mm.d} fill={corMapa(n, max)} stroke={on ? T.ink : "#FCF4E6"} strokeWidth={on ? 1.6 : 0.5} onClick={() => clicar(mm.n)} />
         ); })}
       </svg>
-      <div style={{ textAlign: "center", fontSize: 13, color: T.ink, minHeight: 20, marginTop: 4 }}>
-        {sel ? <span><b>{sel}</b> · {contagem[sel] || 0} {(contagem[sel] || 0) === 1 ? "ideia" : "ideias"}</span> : <span style={{ color: T.inkMute }}>Toque num município</span>}
+      <div style={{ textAlign: "center", fontSize: 12.5, color: T.ink, minHeight: 18, marginTop: 4 }}>
+        {sel ? <span><b>{sel}</b> · {contagem[sel] || 0} {(contagem[sel] || 0) === 1 ? "ideia" : "ideias"}</span> : <span style={{ color: T.inkMute }}>Arraste, dê zoom (+ −) e toque num município</span>}
       </div>
       <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 8, fontSize: 11, color: T.inkMute }}>
         {[["#F3E6CE", "0"], ["#F7C24B", "poucas"], ["#EF5B25", "várias"], ["#C42D1B", "muitas 🔥"]].map(([c, l], i) => (
@@ -575,6 +624,7 @@ function EntregarView({ onSair, onToast }) {
   const [ideias, setIdeias] = useState([]);
   const [pendentes, setPendentes] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const [cidadeFiltro, setCidadeFiltro] = useState(null);
   const carregar = async () => { const [d, p] = await Promise.all([listDossie(), listPendentes()]); setIdeias(d); setPendentes(p); setCarregando(false); };
   useEffect(() => { carregar(); }, []);
   const aprovar = async (id) => { await aprovarIdeia(id); onToast && onToast("Aprovada ✓"); carregar(); };
@@ -582,9 +632,11 @@ function EntregarView({ onSair, onToast }) {
   const porTema = TEMAS.map((t) => ({ tema: t, itens: ideias.filter((i) => i.tema === t) })).filter((g) => g.itens.length).sort((a, b) => b.itens.length - a.itens.length);
   const cidades = new Set(ideias.map((i) => (i.cidade || "").trim().toLowerCase()).filter(Boolean)).size;
   const maxTema = porTema.length ? porTema[0].itens.length : 1;
-  const contagem = {}; ideias.forEach((i) => { const c = (i.cidade || "").trim(); if (c) contagem[c] = (contagem[c] || 0) + 1; });
+  const contagem = {}; ideias.forEach((i) => { const c = normCidade(i.cidade); if (c) contagem[c] = (contagem[c] || 0) + 1; });
   const topCidades = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
   const maxCidade = topCidades.length ? topCidades[0][1] : 1;
+  const ideiasCidade = cidadeFiltro ? ideias.filter((i) => normCidade(i.cidade) === cidadeFiltro) : ideias;
+  const porTemaLista = TEMAS.map((t) => ({ tema: t, itens: ideiasCidade.filter((i) => i.tema === t) })).filter((g) => g.itens.length).sort((a, b) => b.itens.length - a.itens.length);
   const FAIXAS = ["16–17", "18–24", "25–29", "30–35"];
   const faixaCont = FAIXAS.map((f) => [f, ideias.filter((i) => i.idade === f).length]);
   const maxFaixa = Math.max(1, ...faixaCont.map((x) => x[1]));
@@ -611,11 +663,13 @@ function EntregarView({ onSair, onToast }) {
       }).join("");
       return `<div class="sec"><div class="sechead"><span class="dot" style="background:${TEMA_COR[g.tema]}"></span><h2 style="color:${TEMA_COR[g.tema]}">${g.tema}</h2><span class="badge" style="background:${TEMA_COR[g.tema]}">${g.itens.length}</span></div>${cards}</div>`;
     }).join("");
+    const _mmax = Math.max(1, ...Object.values(contagem), 1);
+    const mapaSvg = '<svg viewBox="0 0 ' + CE_MAP.w + ' ' + CE_MAP.h + '" width="330" style="display:block;margin:10px auto">' + CE_MAP.m.map((mm) => '<path d="' + mm.d + '" fill="' + corMapa(contagem[mm.n] || 0, _mmax) + '" stroke="#fff" stroke-width="0.5"/>').join('') + '</svg>';
     w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Dossiê Juventude 40 Graus</title>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>*{box-sizing:border-box}body{margin:0;font-family:'Archivo',Arial,sans-serif;color:#2A1A10;background:#FCF4E6}.disp{font-family:'Bricolage Grotesque','Archivo',sans-serif;font-weight:800;letter-spacing:-.01em}.page{page-break-after:always}.page:last-child{page-break-after:auto}.cover{height:297mm;background:linear-gradient(150deg,#F5A623,#EF5B25 52%,#C4341A);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}.cover .ray{position:absolute;top:-120px;right:-80px;width:420px;height:420px;background:radial-gradient(circle,rgba(255,255,255,.28),transparent 70%)}.cover img{width:70%;max-width:340px;border-radius:12px;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}.cover h1{font-size:42px;margin:24px 0 6px}.cover .sub{font-size:16px;opacity:.95}.cover .eb{font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;opacity:.9;margin-bottom:16px}.cover .foot{position:absolute;bottom:26px;font-size:12px;opacity:.9}.body{padding:24mm 18mm}.stats{display:flex;gap:12px;margin-bottom:22px}.stat{flex:1;background:#FFFBF2;border:1.5px solid #EADFC9;border-radius:14px;padding:13px;text-align:center}.stat b{font-size:26px;color:#EF5B25;display:block;font-family:'Bricolage Grotesque',sans-serif}.stat span{font-size:12px;color:#6E5A4C;font-weight:600}.eb2{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#6E5A4C;margin:6px 0 10px}.chart{margin-bottom:24px}.brow{margin-bottom:9px}.blab{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}.btrack{height:9px;background:#EADFC9;border-radius:999px;overflow:hidden}.bfill{height:100%;border-radius:999px}.sec{margin-bottom:18px;page-break-inside:avoid}.sechead{display:flex;align-items:center;gap:8px;margin:0 0 10px}.sechead h2{font-size:19px;margin:0;font-family:'Bricolage Grotesque',sans-serif}.dot{width:11px;height:11px;border-radius:999px}.badge{color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;font-family:'Bricolage Grotesque',sans-serif}.card{background:#FFFBF2;border:1px solid #EADFC9;border-left:5px solid;border-radius:12px;padding:12px 14px;margin-bottom:10px;page-break-inside:avoid}.ctop{display:flex;justify-content:space-between;align-items:center}.ttag{font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hot{font-size:12px;font-weight:700;color:#C4341A;background:#F5A62322;border-radius:999px;padding:2px 9px}.lk{font-size:12px;font-weight:600;color:#A2907E}.ctitle{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:17px;margin:4px 0 6px}.cline{font-size:13px;color:#6E5A4C;margin-bottom:3px}.cline b{color:#2A1A10}.cauthor{font-size:11px;color:#A2907E;font-weight:600;margin-top:6px}.foot2{border-top:1px solid #EADFC9;margin-top:20px;padding-top:12px;font-size:11px;color:#A2907E;display:flex;justify-content:space-between}@media print{.noprint{display:none}}</style></head><body>
     <div class="page"><div class="cover"><div class="ray"></div><div class="eb">Políticas Públicas de Juventude</div><img src="${LOGO_BANNER}"/><h1 class="disp">Dossiê da Juventude</h1><div class="sub">JSB Ceará · ciclo 2026</div><div class="foot">Gerado em ${dataHoje} · juventude-40-graus.vercel.app</div></div></div>
-    <div class="page"><div class="body"><div class="stats"><div class="stat"><b>${ideias.length}</b><span>propostas</span></div><div class="stat"><b>${porTema.length}</b><span>temas</span></div><div class="stat"><b>${cidades}</b><span>cidades</span></div></div><div class="chart"><div class="eb2">Temas mais pedidos pela juventude</div>${barras}</div><div class="eb2">Propostas por tema</div>${secoes}<div class="foot2"><span>Juventude 40 Graus · JSB Ceará</span><span>Gerado em ${dataHoje}</span></div><button class="noprint" onclick="window.print()" style="margin-top:18px;padding:12px 22px;background:#F5A623;border:none;border-radius:12px;font-weight:bold;cursor:pointer">Salvar como PDF / Imprimir</button></div></div>
+    <div class="page"><div class="body"><div class="stats"><div class="stat"><b>${ideias.length}</b><span>propostas</span></div><div class="stat"><b>${porTema.length}</b><span>temas</span></div><div class="stat"><b>${cidades}</b><span>cidades</span></div></div><div class="chart"><div class="eb2">Temas mais pedidos pela juventude</div>${barras}</div><div class="eb2">Mapa da participação</div>${mapaSvg}<div class="eb2" style="margin-top:14px">Propostas por tema</div>${secoes}<div class="foot2"><span>Juventude 40 Graus · JSB Ceará</span><span>Gerado em ${dataHoje}</span></div><button class="noprint" onclick="window.print()" style="margin-top:18px;padding:12px 22px;background:#F5A623;border:none;border-radius:12px;font-weight:bold;cursor:pointer">Salvar como PDF / Imprimir</button></div></div>
     </body></html>`);
     w.document.close();
   };
@@ -676,7 +730,7 @@ function EntregarView({ onSair, onToast }) {
           )}
           <div style={{ marginBottom: 20 }}>
             <div className="eyebrow" style={{ color: T.inkSoft, marginBottom: 8 }}>Mapa do Ceará · onde a juventude participa</div>
-            <MapaCeara contagem={contagem} />
+            <MapaCeara contagem={contagem} onSelect={setCidadeFiltro} selecionada={cidadeFiltro} />
           </div>
           {topCidades.length > 0 && (
             <div style={{ marginBottom: 20 }}>
@@ -712,9 +766,10 @@ function EntregarView({ onSair, onToast }) {
           <div style={{ height: 8, background: T.line, borderRadius: 999, overflow: "hidden" }}><div style={{ width: (g.itens.length / maxTema * 100) + "%", height: "100%", background: TEMA_COR[g.tema], borderRadius: 999, transition: "width .5s" }} /></div>
         </div>)}
       </div>}
-      {porTema.map((g) => <div key={g.tema} style={{ marginBottom: 16 }}>
+      {cidadeFiltro && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><span style={{ background: T.orange, color: "#fff", borderRadius: 999, padding: "5px 13px", fontSize: 13, fontWeight: 700 }}>Propostas de {cidadeFiltro}</span><button onClick={() => setCidadeFiltro(null)} style={{ border: `1px solid ${T.line}`, background: T.paper2, color: T.ink, borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✕ limpar</button></div>}
+      {porTemaLista.map((g) => <div key={g.tema} style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}><span className="disp" style={{ fontSize: 16, color: TEMA_COR[g.tema] }}>{g.tema}</span><span className="tnum" style={{ fontSize: 11, fontWeight: 700, background: TEMA_COR[g.tema], color: "#fff", borderRadius: 999, padding: "1px 9px" }}>{g.itens.length}</span></div>
-        {g.itens.map((i) => <div key={i.id} style={{ fontSize: 13.5, borderLeft: `3px solid ${T.line}`, paddingLeft: 10, marginBottom: 8, color: T.inkSoft }}><b style={{ color: T.ink }}>{i.titulo}</b>{i.proposta ? ` — ${i.proposta}` : ""}{(i.nome || i.cidade) && <span style={{ display: "block", fontSize: 11, color: T.inkMute, marginTop: 2 }}>{[i.nome, i.cidade, i.idade].filter(Boolean).join(" · ")}</span>}</div>)}
+        {g.itens.map((i) => <div key={i.id} style={{ fontSize: 13.5, borderLeft: `3px solid ${T.line}`, paddingLeft: 10, marginBottom: 8, color: T.inkSoft }}><b style={{ color: T.ink }}>{i.titulo}</b>{i.proposta ? ` — ${i.proposta}` : ""}{(i.nome || i.cidade) && <span style={{ display: "block", fontSize: 11, color: T.inkMute, marginTop: 2 }}>{[i.nome, normCidade(i.cidade), i.idade].filter(Boolean).join(" · ")}</span>}</div>)}
       </div>)}
     </div>
   );
