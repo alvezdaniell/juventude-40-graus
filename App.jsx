@@ -92,6 +92,18 @@ async function statusMinhas() {
 async function curtirIdeia(id) {
   try { await supabase.rpc("curtir", { ideia_id: id }); } catch (e) {}
 }
+async function saveFiliacao(f) {
+  const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : ("f-" + Date.now());
+  const { error } = await supabase.from("filiacoes").insert({ ...f, id });
+  if (error) throw error;
+  return { id };
+}
+async function listFiliacoes() {
+  const { data, error } = await supabase.from("filiacoes").select("*").order("criado_em", { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+async function updateFiliacao(id, status) { await supabase.from("filiacoes").update({ status }).eq("id", id); }
 
 // ---- Ícones ----
 function SunMark({ size = 30, color }) {
@@ -248,6 +260,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [notifs, setNotifs] = useState(() => _ls.get("notifs40", []));
   const [notifAberto, setNotifAberto] = useState(false);
+  const [filiacaoAberta, setFiliacaoAberta] = useState(false);
   const [coordAberta, setCoordAberta] = useState(false);
   const w = useWin();
   const isDesktop = w >= 1120;
@@ -369,6 +382,7 @@ export default function App() {
           <button onClick={() => setCoordAberta(true)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", marginTop: 6, borderRadius: 12, border: coordAberta ? "none" : `1px solid ${T.line}`, background: coordAberta ? T.orange : "transparent", color: coordAberta ? "#fff" : T.inkSoft, fontSize: 15.5, fontWeight: coordAberta ? 800 : 600, cursor: "pointer", textAlign: "left" }}>
             <Icon name="lock" size={20} color={coordAberta ? "#fff" : T.inkSoft} />Coordenação
           </button>
+          <button onClick={() => setFiliacaoAberta(true)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginTop: 6, borderRadius: 12, border: "none", background: T.gradCta, color: T.ink, fontSize: 15, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>✊ Quero fazer parte</button>
           <div style={{ marginTop: "auto", fontSize: 12, color: T.inkMute, lineHeight: 1.5 }}>A juventude do Ceará aquecendo a política 🔥</div>
         </div>
       </aside>
@@ -389,6 +403,7 @@ export default function App() {
       {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
       {sucesso && <SucessoModal onFechar={() => { setSucesso(null); setCoordAberta(false); setTab("mural"); }} />}
       {notifAberto && <NotifPanel notifs={notifs} onFechar={() => setNotifAberto(false)} />}
+      {filiacaoAberta && <FiliacaoForm onFechar={() => setFiliacaoAberta(false)} onToast={showToast} />}
       <Toast msg={toast} />
     </div>
   );
@@ -453,7 +468,11 @@ export default function App() {
             <div className="disp" style={{ fontSize: 20 }}>Menu</div>
             <button onClick={() => setMenu(false)} aria-label="Fechar" style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer" }}><Icon name="x" size={18} color={T.ink} /></button>
           </div>
-          <button onClick={() => { setMenu(false); setCoordAberta(true); }} style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer", textAlign: "left" }}>
+          <button onClick={() => { setMenu(false); setFiliacaoAberta(true); }} style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, border: "none", background: T.gradCta, color: T.ink, cursor: "pointer", textAlign: "left" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 999, background: "rgba(0,0,0,.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>✊</div>
+            <div><div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>Quero fazer parte</div><div style={{ fontSize: 12, color: T.ink, opacity: .7 }}>Filiar-se à Juventude do PSB</div></div>
+          </button>
+          <button onClick={() => { setMenu(false); setCoordAberta(true); }} style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer", textAlign: "left" }}>
             <div style={{ width: 38, height: 38, borderRadius: 999, background: T.gradCta, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon name="lock" size={20} color="#fff" /></div>
             <div><div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>Área da coordenação</div><div style={{ fontSize: 12, color: T.inkMute }}>Login · dossiê e moderação</div></div>
           </button>
@@ -479,6 +498,7 @@ export default function App() {
       {rascunho && <RevisaoModal rascunho={rascunho} setRascunho={setRascunho} onCancelar={() => setRascunho(null)} onConfirmar={confirmarEnvio} />}
       {sucesso && <SucessoModal onFechar={() => { setSucesso(null); setTab("mural"); }} />}
       {notifAberto && <NotifPanel notifs={notifs} onFechar={() => setNotifAberto(false)} />}
+      {filiacaoAberta && <FiliacaoForm onFechar={() => setFiliacaoAberta(false)} onToast={showToast} />}
       <Toast msg={toast} />
     </div>
   );
@@ -698,12 +718,148 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
   );
 }
 
+// ============================ FILIAÇÃO ============================
+function FiliacaoForm({ onFechar, onToast }) {
+  const [f, setF] = useState({ nome: "", cpf: "", whatsapp: "", email: "", cidade: "", bairro: "", faixa: "" });
+  const [ok, setOk] = useState(false);
+  const [erro, setErro] = useState("");
+  const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const inp = { width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${T.line}`, fontSize: 14, marginTop: 4, background: T.paper2, color: T.ink, fontFamily: "inherit" };
+  const lab = { fontSize: 11, fontWeight: 700, color: T.inkSoft, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 12, display: "block" };
+  const enviar = async () => {
+    setErro("");
+    if (!f.nome.trim()) { setErro("Preencha seu nome completo."); return; }
+    if (!f.cidade) { setErro("Escolha sua cidade."); return; }
+    if (!ok) { setErro("Você precisa autorizar o uso dos dados."); return; }
+    setEnviando(true);
+    try { await saveFiliacao(f); setEnviado(true); } catch (e) { setErro("Não consegui enviar agora, tenta de novo."); }
+    setEnviando(false);
+  };
+  return (
+    <Overlay>
+      {enviado ? (
+        <div style={{ textAlign: "center", padding: "8px 4px" }}>
+          <div style={{ width: 72, height: 72, borderRadius: 999, background: T.gradCta, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}><SunMark size={38} color="#fff" /></div>
+          <div className="disp pop" style={{ fontSize: 24, color: T.orangeDeep, marginTop: 12 }}>Cadastro enviado! 🔥</div>
+          <p style={{ fontSize: 14, color: T.ink, marginTop: 6, fontWeight: 600 }}>Bem-vindo(a) à Juventude do PSB!</p>
+          <p style={{ fontSize: 13, color: T.inkSoft, marginTop: 4, lineHeight: 1.5 }}>A coordenação vai te chamar no WhatsApp pra concluir a filiação oficial pela Justiça Eleitoral.</p>
+          <button onClick={onFechar} className="disp" style={{ marginTop: 16, padding: "11px 30px", borderRadius: 16, border: "none", background: T.gradCta, color: T.ink, fontSize: 16, cursor: "pointer", boxShadow: T.shadowSoft }}>Fechar</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="disp" style={{ fontSize: 22, color: T.ink }}>Quero fazer parte ✊</div>
+            <button onClick={onFechar} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.line}`, background: T.paper2, cursor: "pointer" }}><Icon name="x" size={16} color={T.ink} /></button>
+          </div>
+          <p style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4, lineHeight: 1.5 }}>Cadastre-se pra se filiar à Juventude do PSB (JSB). A coordenação te contata pra concluir a filiação oficial. Seus dados ficam privados — só a coordenação vê.</p>
+          <label style={lab}>Nome completo</label>
+          <input style={inp} value={f.nome} onChange={(e) => set("nome", e.target.value)} />
+          <label style={lab}>CPF</label>
+          <input style={inp} inputMode="numeric" placeholder="000.000.000-00" value={f.cpf} onChange={(e) => set("cpf", e.target.value)} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1 }}><label style={lab}>WhatsApp</label><input style={inp} inputMode="tel" placeholder="(88) 9 0000-0000" value={f.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} /></div>
+            <div style={{ flex: 1 }}><label style={lab}>Faixa etária</label><select style={{ ...inp, padding: "10px 8px" }} value={f.faixa} onChange={(e) => set("faixa", e.target.value)}><option value="">—</option><option value="16–17">16–17</option><option value="18–24">18–24</option><option value="25–29">25–29</option><option value="30–35">30–35</option></select></div>
+          </div>
+          <label style={lab}>E-mail</label>
+          <input style={inp} inputMode="email" value={f.email} onChange={(e) => set("email", e.target.value)} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1.4 }}><label style={lab}>Cidade</label><select style={{ ...inp, padding: "10px 8px" }} value={f.cidade} onChange={(e) => set("cidade", e.target.value)}><option value="">— selecione —</option>{MUNICIPIOS.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+            <div style={{ flex: 1 }}><label style={lab}>Bairro</label><input style={inp} value={f.bairro} onChange={(e) => set("bairro", e.target.value)} /></div>
+          </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14, fontSize: 12.5, color: T.inkSoft, lineHeight: 1.45, cursor: "pointer" }}>
+            <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, flexShrink: 0 }} />
+            <span>Autorizo o uso dos meus dados (incluindo CPF) pela coordenação do PSB/JSB para fins de filiação partidária. Entendo que a filiação oficial é concluída pela Justiça Eleitoral. Se sou menor de 18 anos, participo com ciência dos meus responsáveis.</span>
+          </label>
+          {erro && <div style={{ color: T.red, fontSize: 13, marginTop: 8, fontWeight: 700 }}>{erro}</div>}
+          <button onClick={enviar} disabled={enviando} className="disp" style={{ marginTop: 14, width: "100%", padding: 13, borderRadius: 14, border: "none", background: T.gradCta, color: T.ink, fontSize: 16, cursor: "pointer", boxShadow: T.shadowSoft }}>{enviando ? "Enviando…" : "Enviar cadastro"}</button>
+        </>
+      )}
+    </Overlay>
+  );
+}
+
+function FiliacaoDashboard({ onToast }) {
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
+  const [cidadeF, setCidadeF] = useState("");
+  const [statusF, setStatusF] = useState("");
+  const carregar = async () => { setLista(await listFiliacoes()); setCarregando(false); };
+  useEffect(() => { carregar(); }, []);
+  const mudar = async (id, s) => { await updateFiliacao(id, s); onToast && onToast("Atualizado ✓"); carregar(); };
+  const STAT = { novo: ["Novo", T.gold], contatado: ["Contatado", "#2C6FE0"], confirmado: ["Confirmado", "#1E9E6A"] };
+  const total = lista.length;
+  const nConf = lista.filter((x) => x.status === "confirmado").length;
+  const nNovo = lista.filter((x) => !x.status || x.status === "novo").length;
+  const cidades = new Set(lista.map((x) => (x.cidade || "").trim()).filter(Boolean)).size;
+  const cidadesU = Array.from(new Set(lista.map((x) => (x.cidade || "").trim()).filter(Boolean))).sort();
+  const porDia = (() => { const g = {}; lista.forEach((x) => { const d = new Date(x.criado_em); if (!isNaN(d)) { const k = d.toISOString().slice(0, 10); g[k] = (g[k] || 0) + 1; } }); return Object.entries(g).sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-14); })();
+  const maxDia = Math.max(1, ...porDia.map((x) => x[1]));
+  let filtrada = lista;
+  if (busca.trim()) { const q = busca.trim().toLowerCase(); filtrada = filtrada.filter((x) => (x.nome || "").toLowerCase().includes(q)); }
+  if (cidadeF) filtrada = filtrada.filter((x) => (x.cidade || "").trim() === cidadeF);
+  if (statusF) filtrada = filtrada.filter((x) => (x.status || "novo") === statusF);
+  const csvCell = (v) => { v = String(v == null ? "" : v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const baixarCSV = () => {
+    const head = ["nome", "cpf", "whatsapp", "email", "cidade", "bairro", "faixa", "status", "data"];
+    const linhas = lista.map((x) => [x.nome, x.cpf, x.whatsapp, x.email, x.cidade, x.bairro, x.faixa, x.status || "novo", (() => { const d = new Date(x.criado_em); return isNaN(d) ? "" : d.toLocaleDateString("pt-BR"); })()].map(csvCell).join(";"));
+    const csv = head.join(";") + "\n" + linhas.join("\n");
+    try { const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "filiacoes_jsb.csv"; a.click(); URL.revokeObjectURL(url); onToast && onToast("CSV baixado ✓"); } catch (e) {} };
+  const selCss = { padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${T.line}`, background: T.paper2, color: T.ink, fontSize: 13.5, fontFamily: "inherit" };
+  return (
+    <div>
+      <div style={{ background: tint(T.gold, "1A"), border: `1px solid ${T.line}`, borderRadius: 12, padding: "9px 12px", fontSize: 11.5, color: T.inkSoft, lineHeight: 1.4, marginTop: 14 }}>🔒 Dados sensíveis (CPF/contato). Só a coordenação vê. Use apenas para a filiação oficial.</div>
+      <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+        {[[total, "cadastros"], [nConf, "confirmados"], [nNovo, "novos"], [cidades, "cidades"]].map(([v, l], i) => (
+          <div key={i} style={{ flex: 1, background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "10px 4px", textAlign: "center" }}><div className="disp tnum" style={{ fontSize: 20, color: T.orange }}>{v}</div><div style={{ fontSize: 10.5, color: T.inkSoft, fontWeight: 600 }}>{l}</div></div>
+        ))}
+      </div>
+      {porDia.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ color: T.inkSoft, marginBottom: 8 }}>Cadastros por dia</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 80 }}>
+            {porDia.map(([k, v], i) => (<div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}><div style={{ fontSize: 10, fontWeight: 700, color: T.inkSoft }}>{v}</div><div style={{ width: "100%", maxWidth: 22, height: (v / maxDia * 54) + 5, background: T.gradCta, borderRadius: 5 }} /><div style={{ fontSize: 9, color: T.inkMute }}>{k.slice(8) + "/" + k.slice(5, 7)}</div></div>))}
+          </div>
+        </div>
+      )}
+      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔎 Buscar por nome…" style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: `1.5px solid ${T.line}`, background: T.paper2, color: T.ink, fontSize: 14, fontFamily: "inherit", marginBottom: 8 }} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <select value={cidadeF} onChange={(e) => setCidadeF(e.target.value)} style={{ ...selCss, flex: 1 }}><option value="">Todas as cidades</option>{cidadesU.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+        <select value={statusF} onChange={(e) => setStatusF(e.target.value)} style={{ ...selCss, flex: 1 }}><option value="">Todos status</option><option value="novo">Novos</option><option value="contatado">Contatados</option><option value="confirmado">Confirmados</option></select>
+        <button onClick={baixarCSV} disabled={!lista.length} style={{ ...selCss, cursor: "pointer", fontWeight: 700 }}>CSV</button>
+      </div>
+      {carregando && <p style={{ color: T.inkMute }}>Carregando…</p>}
+      {!carregando && filtrada.length === 0 && <p style={{ color: T.inkSoft, fontSize: 14, textAlign: "center", padding: "20px 0" }}>Nenhum cadastro por aqui ainda.</p>}
+      {filtrada.map((x) => { const st = x.status || "novo"; const rc = STAT[st] || STAT.novo; return (
+        <div key={x.id} style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 12, padding: "12px 14px", marginBottom: 9 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div className="disp" style={{ fontSize: 16, color: T.ink }}>{x.nome || "Sem nome"}</div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: rc[1], borderRadius: 999, padding: "2px 10px" }}>{rc[0]}</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 4, lineHeight: 1.5 }}>
+            {x.cpf && <div>CPF: {x.cpf}</div>}
+            {x.whatsapp && <div>WhatsApp: {x.whatsapp}</div>}
+            {x.email && <div>E-mail: {x.email}</div>}
+            <div>{[normCidade(x.cidade), x.bairro, x.faixa].filter(Boolean).join(" · ")}</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 9 }}>
+            {["novo", "contatado", "confirmado"].map((sv) => (<button key={sv} onClick={() => mudar(x.id, sv)} style={{ flex: 1, padding: 8, borderRadius: 9, border: `1.5px solid ${st === sv ? STAT[sv][1] : T.line}`, background: st === sv ? STAT[sv][1] : "transparent", color: st === sv ? "#fff" : T.inkSoft, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{STAT[sv][0]}</button>))}
+          </div>
+        </div>
+      ); })}
+    </div>
+  );
+}
+
 // ============================ ENTREGAR ============================
 function EntregarView({ onSair, onToast }) {
   const [ideias, setIdeias] = useState([]);
   const [pendentes, setPendentes] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [cidadeFiltro, setCidadeFiltro] = useState(null);
+  const [coordTab, setCoordTab] = useState("ideias");
   const carregar = async () => { const [d, p] = await Promise.all([listDossie(), listPendentes()]); setIdeias(d); setPendentes(p); setCarregando(false); };
   useEffect(() => { carregar(); }, []);
   const aprovar = async (id) => { await aprovarIdeia(id); onToast && onToast("Aprovada ✓"); carregar(); };
@@ -759,6 +915,10 @@ function EntregarView({ onSair, onToast }) {
         <div className="disp" style={{ fontSize: 23, color: T.ink }}>Coordenação</div>
         <button onClick={onSair} style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 999, border: `1.5px solid ${T.line}`, background: "transparent", color: T.inkSoft, cursor: "pointer" }}>Sair</button>
       </div>
+
+      <div style={{ display: "flex", gap: 8, margin: "12px 0 4px" }}>{[["ideias", "Ideias"], ["filiacoes", "Filiações"]].map(([k, l]) => { const on = coordTab === k; return <button key={k} onClick={() => setCoordTab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 12, border: `1.5px solid ${on ? T.orange : T.line}`, background: on ? T.orange : "transparent", color: on ? "#fff" : T.inkSoft, fontWeight: on ? 800 : 600, fontSize: 14, cursor: "pointer" }}>{l}</button>; })}</div>
+
+      {coordTab === "filiacoes" ? <FiliacaoDashboard onToast={onToast} /> : (<>
 
       {pendentes.length > 0 && (
         <div style={{ marginTop: 14, background: tint(T.gold, "1A"), border: `1.5px solid ${tint(T.gold, "66")}`, borderRadius: 16, padding: 12 }}>
@@ -850,6 +1010,7 @@ function EntregarView({ onSair, onToast }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}><span className="disp" style={{ fontSize: 16, color: TEMA_COR[g.tema] }}>{g.tema}</span><span className="tnum" style={{ fontSize: 11, fontWeight: 700, background: TEMA_COR[g.tema], color: "#fff", borderRadius: 999, padding: "1px 9px" }}>{g.itens.length}</span></div>
         {g.itens.map((i) => <div key={i.id} style={{ fontSize: 13.5, borderLeft: `3px solid ${T.line}`, paddingLeft: 10, marginBottom: 8, color: T.inkSoft }}><b style={{ color: T.ink }}>{i.titulo}</b>{i.proposta ? ` — ${i.proposta}` : ""}{(i.nome || i.cidade) && <span style={{ display: "block", fontSize: 11, color: T.inkMute, marginTop: 2 }}>{[i.nome, normCidade(i.cidade), i.idade].filter(Boolean).join(" · ")}</span>}</div>)}
       </div>)}
+      </>)}
     </div>
   );
 }
