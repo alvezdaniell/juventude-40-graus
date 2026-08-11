@@ -278,6 +278,16 @@ const BAIRROS_CE = {
 const getBairrosPorCidade = (cidade) => BAIRROS_CE[cidade] || [];
 
 
+
+// Debug para filiação
+const testeFiliacao = () => {
+  console.log("Testando insert em filiacoes...");
+  supabase.from("filiacoes").select("*").limit(1).then(r => {
+    console.log("SELECT ok:", r);
+    if (r.error) console.error("SELECT error:", r.error);
+  });
+};
+
 // ============================ APP ============================
 export default function App() {
   const [tab, setTab] = useState("conversar");
@@ -720,7 +730,7 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
     }
   };
   const onUp = (e) => { ptrs.current.delete(e.pointerId); if (ptrs.current.size === 1) { const v = [...ptrs.current.values()][0]; last.current = { x: v.x, y: v.y }; } else if (ptrs.current.size === 0) last.current = null; };
-  const clicar = (nome) => { setSel(nome); onSelect && onSelect(nome); moved.current = false; };
+  const clicar = (nome) => { console.log("clicou", nome); setSel(nome); if (onSelect) onSelect(nome); moved.current = false; };
   const btn = { width: 34, height: 34, borderRadius: 9, border: `1px solid ${T.line}`, background: T.paper, color: T.ink, fontSize: 18, fontWeight: 800, cursor: "pointer", lineHeight: 1, boxShadow: T.shadowSoft };
   return (
     <div style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 16, padding: 12, position: "relative" }}>
@@ -769,7 +779,7 @@ function FiliacaoForm({ onFechar, onToast }) {
     if (!f.faixa) { setErro("Escolha sua faixa etária."); return; }
     if (!ok) { setErro("Você precisa autorizar o uso dos dados."); return; }
     setEnviando(true);
-    try { await saveFiliacao(f); setEnviado(true); } catch (e) { setErro("Não consegui enviar agora, tenta de novo."); }
+    try { await saveFiliacao(f); setEnviado(true); onToast("Cadastro enviado com sucesso! ✓"); } catch (e) { console.error("Erro filiação:", e); setErro("Erro ao enviar. Verifique os dados e tente novamente."); }
     setEnviando(false);
   };
   return (
