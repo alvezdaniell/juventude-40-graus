@@ -526,7 +526,6 @@ export default function App() {
     </div>
   );
 }
-
 // ============================ CONVERSAR ============================
 function ConversarView({ msgs, iniciou, pensando, extraindo, input, setInput, scrollRef, onEnviar, onSend, onQuick, onProposta, participantes }) {
   const userTurns = msgs.filter((m) => m.role === "user").length;
@@ -1253,5 +1252,3 @@ function Overlay({ children }) {
     </div>
   );
 }
-
-export default App;
