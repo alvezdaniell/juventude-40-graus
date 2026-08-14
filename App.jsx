@@ -260,22 +260,6 @@ function NotifPanel({ notifs, onFechar }) {
   );
 }
 
-const BAIRROS_CE = {
-  "Fortaleza": ["Centro", "Praia de Iracema", "Meireles", "Dionísio Torres", "Aldeota", "Cocó", "Papicu", "Salinas", "Boa Viagem", "Cambeba", "Bairro de Lourdes", "Presidente Kennedy", "Vila Velha"],
-  "Juazeiro do Norte": ["Centro", "Triângulo", "Gethsêmani", "Vila Rica", "São Pedro", "Alto Alegre", "Francisco Cirilo"],
-  "Crato": ["Centro", "Pimenta", "Franciscano", "Lamartine Cavalcante", "Salitre", "Assunção"],
-  "Barbalha": ["Centro", "Vila Nazaré", "Triângulo", "São Vicente", "Tianguá"],
-  "Sobral": ["Centro", "Dom Expedito", "Patrimonial", "Vila Olavo Bilac"],
-  "Maracanaú": ["Centro", "Distrito Industrial", "Pajuçara"],
-  "Caucaia": ["Alcântaras", "Centro", "Icaraí"],
-  "São Gonçalo do Amarante": ["Centro", "Taíba"],
-  "Horizonte": ["Centro", "Cambé"],
-  "Araguaína": ["Centro", "Vila Novo"],
-  "Araçatuba": ["Centro", "Peri Peri"],
-  "Aracati": ["Centro", "Praia do Quixaba"],
-  "Iguatu": ["Centro", "Lagoa da Serra"],
-};
-const getBairrosPorCidade = (cidade) => BAIRROS_CE[cidade] || [];
 
 
 
@@ -730,7 +714,7 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
     }
   };
   const onUp = (e) => { ptrs.current.delete(e.pointerId); if (ptrs.current.size === 1) { const v = [...ptrs.current.values()][0]; last.current = { x: v.x, y: v.y }; } else if (ptrs.current.size === 0) last.current = null; };
-  const clicar = (nome) => { console.log("clicou", nome); setSel(nome); if (onSelect) onSelect(nome); moved.current = false; };
+  const clicar = (nome) => { console.log("=== CLIQUE FUNCIONANDO ===", nome); setSel(nome); if (onSelect) onSelect(nome); };
   const btn = { width: 34, height: 34, borderRadius: 9, border: `1px solid ${T.line}`, background: T.paper, color: T.ink, fontSize: 18, fontWeight: 800, cursor: "pointer", lineHeight: 1, boxShadow: T.shadowSoft };
   return (
     <div style={{ background: T.paper2, border: `1px solid ${T.line}`, borderRadius: 16, padding: 12, position: "relative" }}>
@@ -740,9 +724,9 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
         <button style={{ ...btn, fontSize: 15 }} onClick={() => setVb({ x: 0, y: 0, w: CE_MAP.w, h: CE_MAP.h })}>⟲</button>
       </div>
       <svg ref={svgRef} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} onWheel={onWheel} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-        style={{ width: "100%", maxWidth: 460, display: "block", margin: "0 auto", touchAction: "none", cursor: "grab", userSelect: "none" }}>
+        style={{ width: "100%", maxWidth: 460, display: "block", margin: "0 auto", touchAction: "none", cursor: "grab", userSelect: "none", pointerEvents: "auto" }}>
         {CE_MAP.m.map((mm, i) => { const n = contagem[mm.n] || 0; const on = sel === mm.n || selecionada === mm.n; return (
-          <path key={i} d={mm.d} fill={corMapa(n, max)} stroke={on ? T.ink : "#FCF4E6"} strokeWidth={on ? 1.6 : 0.5} onClick={() => clicar(mm.n)} />
+          <path key={i} d={mm.d} fill={corMapa(n, max)} stroke={on ? T.ink : "#FCF4E6"} strokeWidth={on ? 1.6 : 0.5} style={{ pointerEvents: "auto", cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); clicar(mm.n); }} />
         ); })}
       </svg>
       <div style={{ textAlign: "center", fontSize: 12.5, color: T.ink, minHeight: 18, marginTop: 4 }}>
@@ -758,10 +742,26 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
 }
 
 // ============================ FILIAÇÃO ============================
+
+// Validar CPF
+const validarCPF = (cpf) => {
+  cpf = cpf.replace(/\D/g, '');
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let sum = 0, remainder;
+  for (let i = 1; i <= 9; i++) sum += parseInt(cpf.substring(i - 1, i)) * (11 - i);
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(cpf.substring(9, 10))) return false;
+  sum = 0;
+  for (let i = 1; i <= 10; i++) sum += parseInt(cpf.substring(i - 1, i)) * (12 - i);
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  return remainder === parseInt(cpf.substring(10, 11));
+};
+
 function FiliacaoForm({ onFechar, onToast }) {
-  const [f, setF] = useState({ nome: "", cpf: "", whatsapp: "", email: "", cidade: "", bairro: "", faixa: "", aceita_whatsapp: true });
-  const bairrosPossiveis = getBairrosPorCidade(f.cidade);
-  const [ok, setOk] = useState(false);
+  const [f, setF] = useState({ nome: "", cpf: "", whatsapp: "", email: "", cidade: "", bairro: "", zona_eleitoral: "", secao_eleitoral: "", faixa: "", aceita_whatsapp: true });
+    const [ok, setOk] = useState(false);
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -772,6 +772,9 @@ function FiliacaoForm({ onFechar, onToast }) {
     setErro("");
     if (!f.nome.trim()) { setErro("Preencha seu nome completo."); return; }
     if (!f.cpf.trim()) { setErro("Preencha seu CPF."); return; }
+    if (!validarCPF(f.cpf)) { setErro("CPF inválido. Verifique os dígitos."); return; }
+    if (!f.zona_eleitoral.trim()) { setErro("Preencha sua zona eleitoral."); return; }
+    if (!f.secao_eleitoral.trim()) { setErro("Preencha sua seção eleitoral."); return; }
     if (!f.whatsapp.trim()) { setErro("Preencha seu WhatsApp."); return; }
     if (!f.email.trim()) { setErro("Preencha seu e-mail."); return; }
     if (!f.cidade) { setErro("Escolha sua cidade."); return; }
@@ -779,7 +782,7 @@ function FiliacaoForm({ onFechar, onToast }) {
     if (!f.faixa) { setErro("Escolha sua faixa etária."); return; }
     if (!ok) { setErro("Você precisa autorizar o uso dos dados."); return; }
     setEnviando(true);
-    try { await saveFiliacao(f); setEnviado(true); onToast("Cadastro enviado com sucesso! ✓"); } catch (e) { console.error("Erro filiação:", e); setErro("Erro ao enviar. Verifique os dados e tente novamente."); }
+    try { await saveFiliacao(f); setEnviado(true); onToast("Cadastro enviado com sucesso! ✓"); } catch (e) { console.error("Erro filiação:", e); setErro("Erro ao enviar. Verifique conexão e tente novamente."); onToast && onToast("Erro ao enviar"); }
     setEnviando(false);
   };
   return (
@@ -810,8 +813,14 @@ function FiliacaoForm({ onFechar, onToast }) {
           <label style={lab}>E-mail</label>
           <input style={inp} inputMode="email" value={f.email} onChange={(e) => set("email", e.target.value)} />
           <div style={{ display: "flex", gap: 8 }}>
-          <><label style={lab}>Cidade</label><select style={{ ...inp, padding: "10px 8px" }} value={f.cidade} onChange={(e) => { set("cidade", e.target.value); set("bairro", ""); }}><option value="">— selecione —</option>{MUNICIPIOS.map((c) => <option key={c} value={c}>{c}</option>)}</select></>
+          <><label style={lab}>Cidade</label><select style={{ ...inp, padding: "10px 8px" }} value={f.cidade} onChange={(e) => { set("cidade", e.target.value); set("bairro", ""); }}><option value="">— selecione —</option>{MUNICIPIOS.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          <label style={lab}>Bairro</label>
+          <input style={inp} placeholder="Digite seu bairro" value={f.bairro} onChange={(e) => set("bairro", e.target.value)} /></>
           {f.cidade && bairrosPossiveis.length > 0 && (<><label style={lab}>Bairro</label><select style={{ ...inp, padding: "10px 8px" }} value={f.bairro} onChange={(e) => set("bairro", e.target.value)}><option value="">— selecione —</option>{bairrosPossiveis.map((b) => <option key={b} value={b}>{b}</option>)}</select></>)}
+          <label style={lab}>Zona Eleitoral</label>
+          <input style={inp} type="text" placeholder="Ex: 001" value={f.zona_eleitoral} onChange={(e) => set("zona_eleitoral", e.target.value)} />
+          <label style={lab}>Seção Eleitoral</label>
+          <input style={inp} type="text" placeholder="Ex: 0042" value={f.secao_eleitoral} onChange={(e) => set("secao_eleitoral", e.target.value)} />
           {f.cidade && bairrosPossiveis.length === 0 && (<><label style={lab}>Bairro</label><input style={inp} placeholder="Digite o bairro" value={f.bairro} onChange={(e) => set("bairro", e.target.value)} /></>)}
           </div>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14, fontSize: 12.5, color: T.inkSoft, lineHeight: 1.45, cursor: "pointer" }}>
