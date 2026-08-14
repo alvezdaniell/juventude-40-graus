@@ -1253,3 +1253,5 @@ function Overlay({ children }) {
     </div>
   );
 }
+
+export default App;
