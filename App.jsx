@@ -720,7 +720,7 @@ function MapaCeara({ contagem, onSelect, selecionada }) {
 
 // ============================ FILIAÇÃO ============================
 function FiliacaoForm({ onFechar, onToast }) {
-  const [f, setF] = useState({ nome: "", cpf: "", whatsapp: "", email: "", cidade: "", bairro: "", faixa: "" });
+  const [f, setF] = useState({ nome: "", cpf: "", whatsapp: "", email: "", cidade: "", bairro: "", zona_eleitoral: "", secao_eleitoral: "", faixa: "" });
   const [ok, setOk] = useState(false);
   const [erro, setErro] = useState("");
   const [enviado, setEnviado] = useState(false);
@@ -768,6 +768,10 @@ function FiliacaoForm({ onFechar, onToast }) {
             <div style={{ flex: 1.4 }}><label style={lab}>Cidade</label><select style={{ ...inp, padding: "10px 8px" }} value={f.cidade} onChange={(e) => set("cidade", e.target.value)}><option value="">— selecione —</option>{MUNICIPIOS.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
             <div style={{ flex: 1 }}><label style={lab}>Bairro</label><input style={inp} value={f.bairro} onChange={(e) => set("bairro", e.target.value)} /></div>
           </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1 }}><label style={lab}>Zona eleitoral</label><input style={inp} inputMode="numeric" placeholder="ex: 456" value={f.zona_eleitoral} onChange={(e) => set("zona_eleitoral", e.target.value)} /></div>
+            <div style={{ flex: 1 }}><label style={lab}>Seção eleitoral</label><input style={inp} inputMode="numeric" placeholder="ex: 0123" value={f.secao_eleitoral} onChange={(e) => set("secao_eleitoral", e.target.value)} /></div>
+          </div>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 14, fontSize: 12.5, color: T.inkSoft, lineHeight: 1.45, cursor: "pointer" }}>
             <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, flexShrink: 0 }} />
             <span>Autorizo o uso dos meus dados (incluindo CPF) pela coordenação do PSB/JSB para fins de filiação partidária. Entendo que a filiação oficial é concluída pela Justiça Eleitoral. Se sou menor de 18 anos, participo com ciência dos meus responsáveis.</span>
@@ -803,8 +807,8 @@ function FiliacaoDashboard({ onToast }) {
   if (statusF) filtrada = filtrada.filter((x) => (x.status || "novo") === statusF);
   const csvCell = (v) => { v = String(v == null ? "" : v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   const baixarCSV = () => {
-    const head = ["nome", "cpf", "whatsapp", "email", "cidade", "bairro", "faixa", "status", "data"];
-    const linhas = lista.map((x) => [x.nome, x.cpf, x.whatsapp, x.email, x.cidade, x.bairro, x.faixa, x.status || "novo", (() => { const d = new Date(x.criado_em); return isNaN(d) ? "" : d.toLocaleDateString("pt-BR"); })()].map(csvCell).join(";"));
+    const head = ["nome", "cpf", "whatsapp", "email", "cidade", "bairro", "zona_eleitoral", "secao_eleitoral", "faixa", "status", "data"];
+    const linhas = lista.map((x) => [x.nome, x.cpf, x.whatsapp, x.email, x.cidade, x.bairro, x.zona_eleitoral, x.secao_eleitoral, x.faixa, x.status || "novo", (() => { const d = new Date(x.criado_em); return isNaN(d) ? "" : d.toLocaleDateString("pt-BR"); })()].map(csvCell).join(";"));
     const csv = head.join(";") + "\n" + linhas.join("\n");
     try { const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "filiacoes_jsb.csv"; a.click(); URL.revokeObjectURL(url); onToast && onToast("CSV baixado ✓"); } catch (e) {} };
   const selCss = { padding: "9px 10px", borderRadius: 10, border: `1.5px solid ${T.line}`, background: T.paper2, color: T.ink, fontSize: 13.5, fontFamily: "inherit" };
